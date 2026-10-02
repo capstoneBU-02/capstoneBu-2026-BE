@@ -1,0 +1,14 @@
+{
+  "identities": [
+    {
+      "name": "capstone",
+      "credentials": [
+        {
+          "accessKey": "capstone",
+          "secretKey": "capstone-secret"
+        }
+      ],
+      "actions": ["Admin", "Read", "Write", "List", "Tagging"]
+    }
+  ]
+}

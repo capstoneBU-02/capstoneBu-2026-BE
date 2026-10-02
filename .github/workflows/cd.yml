@@ -1,0 +1,92 @@
+# CD: develop → 개발 서버, main → 프로덕션.
+#
+# 1) build: 이미지를 GHCR에 push (항상 실행)
+#    태그: sha-<커밋> (롤백용) + develop 또는 latest
+# 2) deploy: 서버에서 새 이미지로 교체 (배포 대상 확정 전까지 꺼둠)
+#    켜는 법: 저장소 Settings → Variables에 DEPLOY_ENABLED=true,
+#    Environments(development, production)에 DEPLOY_HOST, DEPLOY_USER, DEPLOY_SSH_KEY 등록
+
+name: CD
+
+on:
+  push:
+    branches: [develop, main]
+  workflow_dispatch:
+
+concurrency:
+  group: cd-${{ github.ref }}
+  cancel-in-progress: false  # 배포 도중 끊지 않는다
+
+jobs:
+  build:
+    name: Build · Push image
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      sha_tag: sha-${{ steps.short.outputs.sha }}
+    steps:
+      - uses: actions/checkout@v7
+      - id: short
+        run: echo "sha=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=raw,value=sha-${{ steps.short.outputs.sha }}
+            type=raw,value=develop,enable=${{ github.ref == 'refs/heads/develop' }}
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+      - uses: docker/build-push-action@v7
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy:
+    name: Deploy
+    needs: build
+    if: vars.DEPLOY_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    environment: ${{ github.ref == 'refs/heads/main' && 'production' || 'development' }}
+    steps:
+      - name: SSH 키 준비
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "${{ vars.DEPLOY_HOST }}" >> ~/.ssh/known_hosts
+      # 서버에는 docker-compose.prod.yml과 .env가 미리 있어야 한다 (배포 대상 확정 시 작성).
+      # 순서: 이미지 pull → 마이그레이션 → 교체 → 헬스 게이트(실패 시 job 실패)
+      - name: 배포
+        env:
+          IMAGE_TAG: ${{ needs.build.outputs.sha_tag }}
+        run: |
+          ssh -i ~/.ssh/deploy_key "${{ vars.DEPLOY_USER }}@${{ vars.DEPLOY_HOST }}" \
+            IMAGE_TAG="$IMAGE_TAG" bash -s <<'EOF'
+          set -euo pipefail
+          cd ~/capstone-backend
+          export IMAGE_TAG
+          docker compose -f docker-compose.prod.yml pull api worker
+          docker compose -f docker-compose.prod.yml run --rm api alembic upgrade head
+          docker compose -f docker-compose.prod.yml up -d api worker
+          for i in $(seq 1 30); do
+            if curl -sf -o /dev/null http://localhost:8000/api/v1/health/ready; then
+              echo "배포 성공: $IMAGE_TAG"; exit 0
+            fi
+            sleep 2
+          done
+          echo "헬스체크 실패: $IMAGE_TAG" >&2
+          docker compose -f docker-compose.prod.yml logs --tail 100 api
+          exit 1
+          EOF

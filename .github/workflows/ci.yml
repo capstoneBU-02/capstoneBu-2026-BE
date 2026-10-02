@@ -1,0 +1,90 @@
+# CI: PR·push마다 코드 품질과 마이그레이션, 도커 빌드를 검증한다.
+# CI가 실패한 브랜치는 머지하지 않는다.
+
+name: CI
+
+on:
+  pull_request:
+    branches: [develop, main]
+  push:
+    branches: [develop, main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: Lint · Type check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10
+        with:
+          enable-cache: true
+      - name: 의존성 설치 (uv.lock 그대로)
+        run: uv sync --frozen
+      - name: ruff lint
+        run: uv run ruff check --output-format=github .
+      - name: ruff format
+        run: uv run ruff format --check .
+      - name: mypy
+        run: uv run mypy app
+
+  test:
+    name: Test · Migration
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: capstone
+          POSTGRES_PASSWORD: capstone
+          POSTGRES_DB: capstone
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U capstone"
+          --health-interval 5s --health-timeout 3s --health-retries 10
+      redis:
+        image: redis:7
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s --health-timeout 3s --health-retries 10
+    env:
+      APP_ENV: test
+      DATABASE_URL: postgresql+psycopg://capstone:capstone@localhost:5432/capstone
+      REDIS_URL: redis://localhost:6379/0
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10
+        with:
+          enable-cache: true
+      - run: uv sync --frozen
+      - name: 마이그레이션 적용
+        run: uv run alembic upgrade head
+      - name: 모델 변경이 마이그레이션에 빠지지 않았는지 확인
+        run: uv run alembic check
+      - name: 다운그레이드 → 재적용 (롤백 가능 여부)
+        run: |
+          uv run alembic downgrade base
+          uv run alembic upgrade head
+      - name: pytest
+        run: uv run pytest
+
+  docker:
+    name: Docker build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: docker/setup-buildx-action@v4
+      - name: 이미지 빌드 (push 안 함)
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          push: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

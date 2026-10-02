@@ -1,0 +1,7 @@
+# 줄바꿈을 LF로 통일 (Windows에서 CRLF로 바뀌면 컨테이너 안 셸 스크립트가 깨짐)
+* text=auto eol=lf
+*.png binary
+*.jpg binary
+*.mp3 binary
+*.mp4 binary
+*.wav binary
