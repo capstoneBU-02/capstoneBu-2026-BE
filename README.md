@@ -27,14 +27,12 @@
 ### 2. 의존성 설치
 ```bash
 uv python install 3.12   # Python 3.12 자동 설치 (이미 있으면 생략됨)
-uv sync                  # .venv 생성 + 패키지 설치 + uv.lock 생성
+uv sync                  # .venv 생성 + 패키지 설치 (uv.lock 버전 그대로)
 ```
-> 처음 한 명이 `uv sync`로 생성된 **uv.lock을 커밋**해 주세요. 이후 팀원은 같은 버전으로 설치됩니다.
 
 ### 3. 환경 변수
-```bash
-cp .env.example .env     # PowerShell: Copy-Item .env.example .env
-```
+노션 **DB·IP** 페이지에서 `.env` 파일을 받아 **레포 최상위 폴더**(`pyproject.toml`과 같은 위치)에 둡니다.
+`.env`는 git에 올리지 않습니다. 설정값을 추가·변경하면 노션의 `.env`도 함께 갱신해 주세요.
 
 ### 4. 전체 실행
 ```bash
