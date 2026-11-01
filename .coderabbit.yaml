@@ -1,0 +1,52 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+# CodeRabbit AI 코드 리뷰 설정 — develop·main으로 올라오는 PR을 자동 리뷰한다.
+language: "ko-KR"
+
+reviews:
+  profile: "chill"            # quiet(중요한 것만) / chill(균형) / assertive(꼼꼼)
+  request_changes_workflow: false
+  high_level_summary: true
+  poem: false
+  review_status: true
+  collapse_walkthrough: false
+  sequence_diagrams: true
+  auto_review:
+    enabled: true
+    drafts: false
+    base_branches: ["develop", "main"]
+  path_filters:
+    - "!uv.lock"
+    - "!alembic/versions/.gitkeep"
+  path_instructions:
+    - path: "app/domains/**/router.py"
+      instructions: |
+        컨트롤러 계층이다. 요청·응답 변환, 검증, 상태 코드만 다루고 비즈니스 로직은 service.py에 있어야 한다.
+        응답은 ApiResponse로 감싸고, response_model을 지정했는지 확인한다.
+    - path: "app/domains/**/service.py"
+      instructions: |
+        비즈니스 로직과 트랜잭션(db.commit) 계층이다.
+        예측 가능한 실패는 BusinessException(ErrorCode.XXX)으로 던지고, 새 에러 코드는 app/core/exceptions.py의 ErrorCode에 있어야 한다.
+        소프트 삭제(deleted_at)된 데이터를 조회 결과에서 제외하는지, 워크스페이스 소유 확인을 하는지 확인한다.
+    - path: "app/domains/**/models.py"
+      instructions: |
+        SQLAlchemy 엔티티다. app/core/base_entity.py의 Base와 TimestampMixin·SoftDeleteMixin을 사용하는지 확인한다.
+        데이터 테이블에는 workspace_id가 있어야 한다. 모델 변경 시 alembic/versions에 마이그레이션 파일이 함께 있는지 확인한다.
+    - path: "app/domains/**/tasks.py"
+      instructions: |
+        Celery 작업이다. 파일 내용 대신 저장소 key를 인자로 주고받는지, 재실행되어도 안전한지(멱등성), 실패 시 상태가 기록되는지 확인한다.
+    - path: "alembic/versions/**"
+      instructions: |
+        DB 마이그레이션이다. downgrade가 구현되어 있는지 확인한다.
+        컬럼 이름 변경·삭제는 expand → contract 두 단계로 나눠야 하며, 한 마이그레이션에서 기존 데이터를 깨뜨리지 않는지 확인한다.
+    - path: "app/core/**"
+      instructions: |
+        모든 도메인이 공유하는 공통 코드다. 특정 도메인에만 필요한 로직이 들어오지 않았는지, 하위 호환을 깨지 않는지 확인한다.
+    - path: "**/*.py"
+      instructions: |
+        비밀번호·키·서버 IP 같은 비밀값이 코드에 하드코딩되지 않았는지 확인한다 (설정은 .env + app/core/config.py).
+    - path: ".github/workflows/**"
+      instructions: |
+        CI/CD 워크플로다. 시크릿이 로그에 노출되지 않는지, 액션 버전이 고정되어 있는지 확인한다.
+
+chat:
+  auto_reply: true
