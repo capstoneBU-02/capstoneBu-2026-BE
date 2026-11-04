@@ -1,0 +1,52 @@
+# PR 규칙: 브랜치 이름, PR 제목, 이슈 연결을 검사한다.
+# squash 머지는 PR 제목이 커밋 제목이 되므로 커밋 메시지는 따로 검사하지 않는다.
+
+name: PR 규칙
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+    branches: [develop, main]
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: PR 규칙
+    runs-on: ubuntu-latest
+    steps:
+      - name: 브랜치 이름·PR 제목·이슈 연결 검사
+        # 제목·본문·브랜치 이름은 외부 입력이므로 명령에 직접 넣지 않고 env로 넘긴다
+        env:
+          HEAD_REF: ${{ github.head_ref }}
+          BASE_REF: ${{ github.base_ref }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          fail=0
+          types='feat|fix|refactor|chore|docs|perf|test|ci'
+
+          # develop → main 승격 PR은 브랜치 이름·이슈 연결 검사에서 제외한다
+          if [[ "$BASE_REF" == "main" && "$HEAD_REF" == "develop" ]]; then
+            promotion=1
+          else
+            promotion=0
+          fi
+
+          if [[ $promotion -eq 0 && ! "$HEAD_REF" =~ ^($types|hotfix)/#[0-9]+-[A-Za-z0-9._-]+$ ]]; then
+            echo "::error::브랜치 이름은 <타입>/#<이슈번호>-<설명> 형식이어야 합니다. 예: feat/#12-kakao-oauth (현재: $HEAD_REF)"
+            fail=1
+          fi
+
+          if [[ ! "$PR_TITLE" =~ ^($types):\ .+ ]]; then
+            echo "::error::PR 제목은 <타입>: <요약> 형식이어야 합니다. 예: feat: 카카오 로그인 연동"
+            fail=1
+          fi
+
+          if [[ $promotion -eq 0 ]] && ! grep -qiE '(close[sd]?|fix(e[sd])?|resolve[sd]?) +#[0-9]+' <<<"$PR_BODY"; then
+            echo "::error::PR 본문에 관련 이슈를 적어 주세요. 예: close #12"
+            fail=1
+          fi
+
+          exit $fail
