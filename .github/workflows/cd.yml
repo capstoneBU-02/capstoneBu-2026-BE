@@ -1,6 +1,7 @@
 # CD: develop → 개발 서버, main → 프로덕션.
 #
-# 1) build: 이미지를 GHCR에 push (항상 실행)
+# 1) build: api·worker 이미지를 각각 GHCR에 push (항상 실행)
+#    이미지: ghcr.io/<저장소>/api (AI 패키지 없음), ghcr.io/<저장소>/worker (AI 패키지 포함)
 #    태그: sha-<커밋> (롤백용) + develop 또는 latest
 # 2) deploy: 서버에서 새 이미지로 교체 (배포 대상 확정 전까지 꺼둠)
 #    켜는 법: 저장소 Settings → Variables에 DEPLOY_ENABLED=true,
@@ -19,8 +20,11 @@ concurrency:
 
 jobs:
   build:
-    name: Build · Push image
+    name: Build · Push image (${{ matrix.target }})
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        target: [api, worker]
     permissions:
       contents: read
       packages: write
@@ -39,7 +43,7 @@ jobs:
       - id: meta
         uses: docker/metadata-action@v6
         with:
-          images: ghcr.io/${{ github.repository }}
+          images: ghcr.io/${{ github.repository }}/${{ matrix.target }}
           tags: |
             type=raw,value=sha-${{ steps.short.outputs.sha }}
             type=raw,value=develop,enable=${{ github.ref == 'refs/heads/develop' }}
@@ -47,11 +51,12 @@ jobs:
       - uses: docker/build-push-action@v7
         with:
           context: .
+          target: ${{ matrix.target }}
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=gha,scope=${{ matrix.target }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.target }}
 
   deploy:
     name: Deploy
@@ -67,6 +72,7 @@ jobs:
           chmod 600 ~/.ssh/deploy_key
           ssh-keyscan -H "${{ vars.DEPLOY_HOST }}" >> ~/.ssh/known_hosts
       # 서버에는 docker-compose.prod.yml과 .env가 미리 있어야 한다 (배포 대상 확정 시 작성).
+      # prod compose의 api·worker는 위에서 올린 각자의 이미지를 IMAGE_TAG로 받는다.
       # 순서: 이미지 pull → 마이그레이션 → 교체 → 헬스 게이트(실패 시 job 실패)
       - name: 배포
         env:

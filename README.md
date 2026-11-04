@@ -140,17 +140,17 @@ AI 결과는 모두 사용자가 원음과 함께 확인하는 **초안**이며,
 분리 음원 업로드(JOB-02)는 separate를 건너뛰고 구간 WAV를 guitar.wav로 복사
 ```
 
-| 태스크 | 입력 | 출력 (저장소 key, 앞에 `{workspace_id}/`) | 큐 |
+| 태스크 | 입력 | 출력 (저장소 key, 앞에 `{workspace_id}/{track_id}/`) | 큐 |
 |---|---|---|---|
 | `preprocess(segment_id)` | 원본 파일, start·end | `segments/{segment_id}.wav` | cpu |
-| `separate(segment_id)` | 구간 WAV | `stems/{segment_id}/guitar.wav` | gpu |
-| `transcribe(segment_id)` | 기타 스템 | `notes/{segment_id}.json` | cpu |
-| `quantize(segment_id)` | 노트, 구간 WAV | `rhythm/{segment_id}.json` | cpu |
-| `build_tab(segment_id, condition)` | 정량화 노트, 연주 조건 | `tabs/{segment_id}/{version}.json`, `.musicxml` | cpu |
+| `separate(segment_id)` | 구간 WAV | `stems/{segment_id}/{stem_id}/guitar.wav` | gpu |
+| `transcribe(tab_id)` | 기타 음원 | `tabs/{tab_id}/notes.json` | cpu |
+| `quantize(tab_id)` | 노트, 구간 WAV | `tabs/{tab_id}/rhythm.json` | cpu |
+| `build_tab(tab_id)` | 정량화 노트, 연주 조건 | `tabs/{tab_id}/tab.json`, `tab.musicxml` | cpu |
 
 - 단계끼리는 함수를 직접 부르지 않고 **저장소 파일 + 스키마**로만 주고받습니다. 그래서 단계별로 따로 개발·테스트·재시도할 수 있습니다.
-- 각 태스크는 끝날 때 `StageResult`(`success` / `needs_review` / `failed`, `error_code`, `model`, `config_version`)를 DB에 남깁니다.
-- 재시도는 실패한 태스크부터 앞 단계 결과를 재사용해 최대 3회. 입력 해시 + 구간 + 연주 조건 + `config_version`이 같으면 기존 결과를 돌려줍니다.
+- 각 태스크는 끝날 때 결과(`success` / `needs_review` / `failed`, `error_code`, `model`)를 도메인별 테이블(`stem_stage_results`, `tab_stage_results`)에 남깁니다.
+- 재시도는 실패한 태스크부터 앞 단계 결과를 재사용해 최대 3회. 기타 음원 해시 + 결과 유형 + 연주 조건 + `config_version`이 같으면 기존 타브를 돌려줍니다.
 
 ### 코드 위치
 
@@ -169,9 +169,9 @@ scripts/eval/           # 모델 평가 스크립트 (무거워서 CI 밖에서 
 | 큐 | 처리 | 워커 |
 |---|---|---|
 | `cpu` (기본) | 전처리, 음 인식, 리듬, 타브 | `worker` |
-| `gpu` | 기타 분리 | PoC 초기에는 `worker`가 함께 처리 (`-Q cpu,gpu`) |
+| `gpu` | 기타 분리 | `worker`가 CPU로 함께 처리 (`-Q cpu,gpu`) |
 
-GPU 서버에서는 `docker compose --profile gpu up`으로 `worker-gpu`(`-Q gpu`)를 띄우고 `worker`는 `-Q cpu`로 바꿉니다.
+worker 이미지는 **CPU 전용**입니다(PyTorch CPU 빌드). GPU 서버용 워커는 GPU 의존성을 따로 구성할 때 추가합니다.
 GPU 태스크는 `@celery_app.task(queue="gpu")`로 지정합니다. 작업 상태는 Flower(`--profile monitor`)에서 봅니다.
 
 ### AI 설정 (`app/core/config.py`, env `AI_*`)
@@ -252,7 +252,7 @@ hotfix/#34-xxx  ── main에서 분기 → main 머지 후 develop에도 반�
 | 워크플로 | 언제 | 하는 일 |
 |---|---|---|
 | `ci.yml` | develop·main으로 PR, push | ruff · mypy · 마이그레이션(upgrade → check → downgrade → upgrade) · pytest · 도커 빌드 |
-| `cd.yml` | develop·main push | GHCR에 이미지 push (`sha-<커밋>` + `develop`/`latest`). 서버 배포 단계는 배포 대상 확정 후 활성화 |
+| `cd.yml` | develop·main push | GHCR에 `api`·`worker` 이미지를 각각 push (`sha-<커밋>` + `develop`/`latest`). 서버 배포 단계는 배포 대상 확정 후 활성화 |
 
 - **CI가 실패한 PR은 머지하지 않습니다.** PR 올리기 전에 로컬에서 `ruff` · `mypy` · `pytest`를 먼저 돌려 주세요.
 - 모델을 바꾸고 마이그레이션 파일을 빼먹으면 CI의 `alembic check`에서 실패합니다.

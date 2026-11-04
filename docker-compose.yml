@@ -4,7 +4,6 @@
 # - redis     localhost:6379
 # - seaweedfs localhost:8333 (S3 API)
 # - flower    http://localhost:5555  (선택: docker compose --profile monitor up)
-# - worker-gpu GPU 서버 전용 (선택: docker compose --profile gpu up)
 
 services:
   api:
@@ -33,7 +32,7 @@ services:
     build:
       context: .
       target: worker
-    # PoC 초기에는 cpu 워커가 gpu 큐까지 함께 처리한다. GPU 워커를 띄우면 -Q cpu 로 바꾼다
+    # worker 이미지는 CPU 전용이다. 워커 하나가 gpu 큐(기타 분리)까지 CPU로 함께 처리한다
     command: celery -A app.core.celery_app worker -Q cpu,gpu --loglevel=info --concurrency=1
     env_file: .env
     volumes:
@@ -45,31 +44,6 @@ services:
         condition: service_healthy
       seaweedfs:
         condition: service_healthy
-
-  # GPU 서버 전용 (NVIDIA Container Toolkit 필요): docker compose --profile gpu up
-  worker-gpu:
-    build:
-      context: .
-      target: worker
-    profiles: ["gpu"]
-    command: celery -A app.core.celery_app worker -Q gpu --loglevel=info --concurrency=1
-    env_file: .env
-    volumes:
-      - ./app:/app/app
-      - ./scripts:/app/scripts
-      - model-cache:/models
-    depends_on:
-      redis:
-        condition: service_healthy
-      seaweedfs:
-        condition: service_healthy
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [gpu]
 
   postgres:
     image: postgres:17
