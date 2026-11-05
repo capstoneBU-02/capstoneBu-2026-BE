@@ -93,3 +93,15 @@ jobs:
           push: false
           cache-from: type=gha,scope=${{ matrix.target }}
           cache-to: type=gha,mode=max,scope=${{ matrix.target }}
+
+  # 필수 검사 "Docker build"는 matrix 이름과 달라서, api·worker 결과를 이 job으로 모아 보고한다
+  docker-result:
+    name: Docker build
+    needs: docker
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: api·worker 빌드 결과 확인
+        env:
+          RESULT: ${{ needs.docker.result }}
+        run: test "$RESULT" = "success"
