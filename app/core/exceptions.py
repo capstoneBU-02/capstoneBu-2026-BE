@@ -31,6 +31,22 @@ class ErrorCode(Enum):
 
     # 도메인별 코드는 아래에 추가 (예: Workspace, Song, Section, Job)
 
+    # AI 파이프라인
+    PREPROCESS_INVALID_AUDIO = (400, "PREPROCESS_INVALID_AUDIO", "오디오 파일을 읽을 수 없습니다.")
+    SEPARATION_NO_GUITAR = (422, "SEPARATION_NO_GUITAR", "음원에서 기타 소리를 찾지 못했습니다.")
+    SEPARATION_UNCLEAR = (422, "SEPARATION_UNCLEAR", "기타 소리가 충분히 분리되지 않았습니다.")
+    TAB_NO_NOTES = (422, "TAB_NO_NOTES", "인식된 음이 없습니다.")
+    TAB_LOW_CONFIDENCE = (
+        422,
+        "TAB_LOW_CONFIDENCE",
+        "인식 신뢰도가 낮아 결과가 부정확할 수 있습니다.",
+    )
+    AI_WORKER_TIMEOUT = (
+        504,
+        "AI_WORKER_TIMEOUT",
+        "분석 시간이 초과되었습니다. 잠시 후 다시 시도해 주세요.",
+    )
+
     @property
     def status(self) -> int:
         return int(self.value[0])

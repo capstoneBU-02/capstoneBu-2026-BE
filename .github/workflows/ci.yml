@@ -76,8 +76,12 @@ jobs:
         run: uv run pytest
 
   docker:
-    name: Docker build
+    name: Docker build (${{ matrix.target }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [api, worker]  # api: AI 패키지 없음 / worker: AI 패키지 포함
     steps:
       - uses: actions/checkout@v7
       - uses: docker/setup-buildx-action@v4
@@ -85,6 +89,19 @@ jobs:
         uses: docker/build-push-action@v7
         with:
           context: .
+          target: ${{ matrix.target }}
           push: false
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=gha,scope=${{ matrix.target }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.target }}
+
+  # 필수 검사 "Docker build"는 matrix 이름과 달라서, api·worker 결과를 이 job으로 모아 보고한다
+  docker-result:
+    name: Docker build
+    needs: docker
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: api·worker 빌드 결과 확인
+        env:
+          RESULT: ${{ needs.docker.result }}
+        run: test "$RESULT" = "success"

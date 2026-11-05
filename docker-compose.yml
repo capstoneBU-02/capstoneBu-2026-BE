@@ -7,7 +7,9 @@
 
 services:
   api:
-    build: .
+    build:
+      context: .
+      target: api
     command: >
       sh -c "alembic upgrade head &&
              uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
@@ -27,24 +29,21 @@ services:
         condition: service_healthy
 
   worker:
-    build: .
-    command: celery -A app.core.celery_app worker --loglevel=info --concurrency=1
+    build:
+      context: .
+      target: worker
+    # worker 이미지는 CPU 전용이다. 워커 하나가 gpu 큐(기타 분리)까지 CPU로 함께 처리한다
+    command: celery -A app.core.celery_app worker -Q cpu,gpu --loglevel=info --concurrency=1
     env_file: .env
     volumes:
       - ./app:/app/app
+      - ./scripts:/app/scripts
+      - model-cache:/models   # AI 모델 가중치 (scripts/download_models.py)
     depends_on:
       redis:
         condition: service_healthy
       seaweedfs:
         condition: service_healthy
-    # GPU를 쓸 때 (NVIDIA Container Toolkit 필요) 아래 주석 해제
-    # deploy:
-    #   resources:
-    #     reservations:
-    #       devices:
-    #         - driver: nvidia
-    #           count: 1
-    #           capabilities: [gpu]
 
   postgres:
     image: postgres:17
@@ -101,3 +100,4 @@ services:
 volumes:
   postgres-data:
   seaweedfs-data:
+  model-cache:
