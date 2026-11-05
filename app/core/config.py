@@ -36,6 +36,13 @@ class Settings(BaseSettings):
     ai_separation_rms_db: float = 30.0
     # 타브 운지 Viterbi 비용 가중치. env는 JSON: AI_TAB_WEIGHTS='{"span": 1.0, ...}'
     ai_tab_weights: dict[str, float] = {"span": 1.0, "pos": 0.1, "move": 0.5, "strskip": 0.3}
+    ai_tab_max_fret: int = 22
+    ai_tab_span_limit: int = 4  # 이 프렛 범위를 넘는 만큼 span 벌점을 더한다
+    ai_tab_span_penalty: float = 100.0
+    ai_tab_max_states: int = 50  # 시점당 남기는 손 모양 후보 수 (비용 낮은 순)
+    # 연주 가능성 검사: 한 시점의 프렛 범위 상한, 16분음표 안의 손 위치 이동 한계
+    ai_playable_max_span: int = 5
+    ai_playable_max_move: int = 7
     ai_model_cache_dir: str = "/models"
 
     # 분리·처리(JOB). 제한 시간은 D12 확정 전 초기값

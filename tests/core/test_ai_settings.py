@@ -19,6 +19,12 @@ def test_ai_settings_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
     assert s.ai_low_confidence == 0.4
     assert s.ai_separation_rms_db == 30.0
     assert s.ai_tab_weights == {"span": 1.0, "pos": 0.1, "move": 0.5, "strskip": 0.3}
+    assert s.ai_tab_max_fret == 22
+    assert s.ai_tab_span_limit == 4
+    assert s.ai_tab_span_penalty == 100.0
+    assert s.ai_tab_max_states == 50
+    assert s.ai_playable_max_span == 5
+    assert s.ai_playable_max_move == 7
     assert s.ai_model_cache_dir == "/models"
 
 
