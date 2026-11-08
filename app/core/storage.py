@@ -51,6 +51,18 @@ def ensure_bucket() -> None:
         s3.create_bucket(Bucket=bucket)
 
 
+def download_file(key: str, path: str) -> None:
+    """저장소의 key를 로컬 파일로 내려받는다 (worker 전용)."""
+    get_s3().download_file(get_settings().s3_bucket, key, path)
+
+
+def upload_file(path: str, key: str, content_type: str) -> None:
+    """로컬 파일을 저장소 key로 올린다 (worker 전용)."""
+    get_s3().upload_file(
+        path, get_settings().s3_bucket, key, ExtraArgs={"ContentType": content_type}
+    )
+
+
 def presigned_upload_url(key: str, content_type: str) -> str:
     s = get_settings()
     return _get_public_s3().generate_presigned_url(

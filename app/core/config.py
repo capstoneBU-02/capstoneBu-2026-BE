@@ -38,6 +38,14 @@ class Settings(BaseSettings):
     ai_tab_weights: dict[str, float] = {"span": 1.0, "pos": 0.1, "move": 0.5, "strskip": 0.3}
     ai_model_cache_dir: str = "/models"
 
+    # 분리·처리(JOB). 제한 시간은 D12 확정 전 초기값
+    ai_preprocess_timeout_sec: int = 60
+    ai_separation_timeout_sec: int = 600
+    ai_preprocess_padding_ms: int = 500  # 구간 앞뒤 여유. 분리 후 잘라낸다
+    ai_sample_rate: int = 44100
+    ai_silence_dbfs: float = -50.0  # 이보다 작으면 무음
+    ai_separation_min_active_ratio: float = 0.1  # 소리 나는 구간이 이 비율 미만이면 needs_review
+
     @property
     def cors_origin_list(self) -> list[str]:
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]

@@ -31,6 +31,21 @@ class ErrorCode(Enum):
 
     # 도메인별 코드는 아래에 추가 (예: Workspace, Song, Section, Job)
 
+    # Segment (SEG)
+    SEGMENT_NOT_FOUND = (404, "SEGMENT_NOT_FOUND", "구간을 찾을 수 없습니다.")
+
+    # Processing (JOB)
+    STEM_NOT_FOUND = (404, "STEM_NOT_FOUND", "기타 음원을 찾을 수 없습니다.")
+    STEM_IN_PROGRESS = (
+        409,
+        "STEM_IN_PROGRESS",
+        "같은 구간의 기타 음원을 이미 준비하고 있습니다.",
+    )
+    STEM_NOT_READY = (409, "STEM_NOT_READY", "기타 음원이 아직 준비되지 않았습니다.")
+    STEM_NOT_RETRYABLE = (409, "STEM_NOT_RETRYABLE", "다시 시도할 수 없는 작업입니다.")
+    STEM_NOT_CANCELABLE = (409, "STEM_NOT_CANCELABLE", "중단할 수 없는 상태입니다.")
+    RETRY_LIMIT_EXCEEDED = (409, "RETRY_LIMIT_EXCEEDED", "재시도 횟수를 모두 사용했습니다.")
+
     # AI 파이프라인
     PREPROCESS_INVALID_AUDIO = (400, "PREPROCESS_INVALID_AUDIO", "오디오 파일을 읽을 수 없습니다.")
     SEPARATION_NO_GUITAR = (422, "SEPARATION_NO_GUITAR", "음원에서 기타 소리를 찾지 못했습니다.")
@@ -46,6 +61,7 @@ class ErrorCode(Enum):
         "AI_WORKER_TIMEOUT",
         "분석 시간이 초과되었습니다. 잠시 후 다시 시도해 주세요.",
     )
+    AI_WORKER_ERROR = (500, "AI_WORKER_ERROR", "처리 중 오류가 발생했습니다.")
 
     @property
     def status(self) -> int:
