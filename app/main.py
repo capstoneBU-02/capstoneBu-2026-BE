@@ -10,6 +10,7 @@ from app.core.exceptions import register_exception_handlers
 from app.core.middleware import TraceIdMiddleware
 from app.core.storage import ensure_bucket
 from app.domains.health.router import router as health_router
+from app.domains.processing.router import router as processing_router
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s - %(message)s")
 logger = logging.getLogger(__name__)
@@ -47,6 +48,7 @@ def create_app() -> FastAPI:
 
     # 라우터 등록 — 새 도메인은 여기 추가
     app.include_router(health_router, prefix=settings.api_prefix)
+    app.include_router(processing_router, prefix=settings.api_prefix)
 
     return app
 

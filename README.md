@@ -142,8 +142,8 @@ AI 결과는 모두 사용자가 원음과 함께 확인하는 **초안**이며,
 
 | 태스크 | 입력 | 출력 (저장소 key, 앞에 `{workspace_id}/{track_id}/`) | 큐 |
 |---|---|---|---|
-| `preprocess(segment_id)` | 원본 파일, start·end | `segments/{segment_id}.wav` | cpu |
-| `separate(segment_id)` | 구간 WAV | `stems/{segment_id}/{stem_id}/guitar.wav` | gpu |
+| `processing.preprocess(stem_id)` | 원본 파일, `start_ms`·`end_ms` | `segments/{segment_id}/{stem_id}/input.wav` (앞뒤 0.5초 여유) | cpu |
+| `processing.separate(stem_id)` | 구간 WAV | `stems/{segment_id}/{stem_id}/guitar.wav` (여유 제거) | gpu |
 | `transcribe(tab_id)` | 기타 음원 | `tabs/{tab_id}/notes.json` | cpu |
 | `quantize(tab_id)` | 노트, 구간 WAV | `tabs/{tab_id}/rhythm.json` | cpu |
 | `build_tab(tab_id)` | 정량화 노트, 연주 조건 | `tabs/{tab_id}/tab.json`, `tab.musicxml` | cpu |
