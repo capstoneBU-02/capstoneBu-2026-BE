@@ -18,11 +18,15 @@ class StemCreatedResponse(BaseModel):
 
 
 class StageView(BaseModel):
+    """단계별 진행 표시용."""
+
     stage: str
     status: str
 
 
 class FailureView(BaseModel):
+    """실패 안내. failed일 때만 포함한다."""
+
     stage: str | None
     error_code: str
     message: str
@@ -51,6 +55,8 @@ class StemResponse(BaseModel):
 
 
 class RetryResponse(BaseModel):
+    """POST /stems/{stem_id}/retry 응답."""
+
     stem_id: int
     status: str
     retry_from: str
@@ -60,5 +66,7 @@ class RetryResponse(BaseModel):
 
 
 class CancelResponse(BaseModel):
+    """POST /stems/{stem_id}/cancel 응답."""
+
     stem_id: int
     status: str

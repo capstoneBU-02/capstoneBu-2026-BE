@@ -34,6 +34,7 @@ def upgrade() -> None:
         sa.Column("current_stage", sa.String(length=20), nullable=True),
         sa.Column("bypass_separation", sa.Boolean(), nullable=False),
         sa.Column("storage_key", sa.String(length=500), nullable=True),
+        sa.Column("input_pad_ms", sa.Integer(), nullable=True),
         sa.Column("review_reason", sa.String(length=50), nullable=True),
         sa.Column("input_hash", sa.String(length=64), nullable=False),
         sa.Column("config_version", sa.String(length=20), nullable=False),

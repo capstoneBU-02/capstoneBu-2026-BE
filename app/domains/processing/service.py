@@ -2,8 +2,10 @@
 
 import hashlib
 import json
+import logging
 from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import func, select, text
 from sqlalchemy.exc import IntegrityError
@@ -12,6 +14,7 @@ from sqlalchemy.orm import Session
 from app.core.config import Settings, get_settings
 from app.core.exceptions import BusinessException, ErrorCode
 from app.domains.processing import sources
+from app.domains.processing.limits import hard_limit_sec
 from app.domains.processing.models import (
     ACTIVE_STATUSES,
     READY_STATUSES,
@@ -31,7 +34,12 @@ from app.domains.processing.schemas import (
     StemResponse,
 )
 
+logger = logging.getLogger(__name__)
+
 MAX_RETRIES = 3
+
+# processing 상태가 단계 강제 종료 시간보다 이만큼 더 지나면 멈춘 작업으로 본다
+STALE_MARGIN_SEC = 60
 
 # 입력 자체가 잘못돼 다시 실행해도 결과가 같은 실패
 NON_RETRYABLE_CODES = frozenset(
@@ -46,6 +54,8 @@ Enqueue = Callable[[int, StemStage], None]
 
 @dataclass(frozen=True)
 class StemRequestResult:
+    """준비 요청 결과. is_reused면 기존 결과를 돌려준 것."""
+
     stem: Stem
     is_reused: bool
 
@@ -75,9 +85,52 @@ def _lock_segment(db: Session, segment_id: int) -> None:
 
 
 def _default_enqueue(stem_id: int, start: StemStage) -> None:
+    """Celery chain 등록 (테스트에서 바꿔 끼운다)."""
     from app.domains.processing.tasks import enqueue_pipeline  # 순환 import 방지
 
     enqueue_pipeline(stem_id, start)
+
+
+def _publish(db: Session, stem: Stem, start: StemStage, enqueue: Enqueue | None) -> None:
+    """commit 후 작업을 등록한다. 등록 자체가 실패하면 바로 실패로 기록해 재시도할 수 있게 한다.
+
+    등록 직전에 프로세스가 죽는 경우는 expire_if_stale이 queued 대기 시간으로 복구한다.
+    """
+    try:
+        (enqueue or _default_enqueue)(stem.id, start)
+    except Exception:
+        logger.exception("stem %s 작업 등록 실패", stem.id)
+        stem.status = StemStatus.FAILED
+        stem.current_stage = start
+        stem.error_code = ErrorCode.AI_WORKER_ERROR.code
+        db.commit()
+
+
+def _stale_deadline(stem: Stem, settings: Settings) -> datetime | None:
+    """이 시각이 지나도 queued·processing이면 멈춘 작업이다."""
+    if stem.status == StemStatus.QUEUED:
+        return stem.updated_at + timedelta(seconds=settings.ai_job_queued_stale_sec)
+    if stem.status == StemStatus.PROCESSING:
+        stage = StemStage(stem.current_stage or StemStage.PREPROCESS)
+        limit = hard_limit_sec(stage, settings) + STALE_MARGIN_SEC
+        return stem.updated_at + timedelta(seconds=limit)
+    return None
+
+
+def is_stale(stem: Stem, now: datetime | None = None) -> bool:
+    """등록이 유실됐거나 워커가 죽어 더 진행되지 않는 작업인지."""
+    deadline = _stale_deadline(stem, get_settings())
+    return deadline is not None and (now or datetime.now(UTC)) > deadline
+
+
+def expire_if_stale(stem: Stem, now: datetime | None = None) -> bool:
+    """멈춘 작업을 AI_WORKER_TIMEOUT 실패로 바꾼다 (재시도 가능). 잠근 행에서 호출한다."""
+    if not is_stale(stem, now):
+        return False
+    logger.warning("stem %s 멈춘 작업 실패 처리 (status=%s)", stem.id, stem.status)
+    stem.status = StemStatus.FAILED
+    stem.error_code = ErrorCode.AI_WORKER_TIMEOUT.code
+    return True
 
 
 def request_stem(
@@ -103,9 +156,19 @@ def request_stem(
         .order_by(Stem.version.desc())
         .limit(1)
     ).first()
-    if existing is not None:
-        if existing.status in ACTIVE_STATUSES:
+    if existing is not None and existing.status in ACTIVE_STATUSES:
+        # 멈춘 작업이면 실패로 바꾸고 새 version을 만든다
+        locked = db.scalars(
+            select(Stem)
+            .where(Stem.id == existing.id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        ).one()
+        if not expire_if_stale(locked):
             raise BusinessException(ErrorCode.STEM_IN_PROGRESS)
+        db.flush()  # 부분 UNIQUE 인덱스에서 빠진 뒤 새 행을 넣는다
+        existing = None
+    if existing is not None:
         db.rollback()  # 잠금 해제
         return StemRequestResult(existing, is_reused=True)
 
@@ -134,19 +197,30 @@ def request_stem(
         raise BusinessException(ErrorCode.STEM_IN_PROGRESS) from e
 
     # commit 후에 등록해야 worker가 아직 없는 행을 읽지 않는다
-    (enqueue or _default_enqueue)(stem.id, StemStage.PREPROCESS)
+    _publish(db, stem, StemStage.PREPROCESS, enqueue)
     return StemRequestResult(stem, is_reused=False)
 
 
-def get_owned_stem(db: Session, workspace_id: int, stem_id: int, *, lock: bool = False) -> Stem:
-    """다른 워크스페이스 소유면 없는 것처럼 404."""
+def _select_stem(db: Session, stem_id: int, *, lock: bool) -> Stem | None:
+    """삭제되지 않은 stem 조회. lock이면 행을 잠그고 최신 값으로 읽는다."""
     stmt = select(Stem).where(Stem.id == stem_id, Stem.deleted_at.is_(None))
     if lock:
         # 잠근 뒤에는 세션에 남은 예전 값이 아니라 DB의 최신 값을 써야 한다
         stmt = stmt.with_for_update().execution_options(populate_existing=True)
-    stem = db.scalars(stmt).first()
+    return db.scalars(stmt).first()
+
+
+def get_owned_stem(db: Session, workspace_id: int, stem_id: int, *, lock: bool = False) -> Stem:
+    """다른 워크스페이스 소유면 없는 것처럼 404. 멈춘 작업은 여기서 실패로 바꾼다."""
+    stem = _select_stem(db, stem_id, lock=lock)
     if stem is None or stem.workspace_id != workspace_id:
         raise BusinessException(ErrorCode.STEM_NOT_FOUND)
+    if is_stale(stem):
+        locked = stem if lock else _select_stem(db, stem_id, lock=True)
+        if locked is not None and expire_if_stale(locked):
+            db.commit()
+            # 호출한 쪽이 잠금을 요청했으면 다시 잠근다 (commit으로 잠금이 풀림)
+            stem = _select_stem(db, stem_id, lock=lock) or locked
     return stem
 
 
@@ -169,6 +243,7 @@ def get_current_stem(db: Session, segment_id: int, start_ms: int, end_ms: int) -
 
 
 def _latest_stage_results(db: Session, stem_id: int) -> dict[str, StemStageResult]:
+    """단계별 마지막 시도 결과."""
     rows = db.scalars(
         select(StemStageResult)
         .where(StemStageResult.stem_id == stem_id)
@@ -181,6 +256,7 @@ def _latest_stage_results(db: Session, stem_id: int) -> dict[str, StemStageResul
 
 
 def _error_message(code: str) -> str:
+    """error_code에 맞는 사용자 안내 문구."""
     try:
         return ErrorCode[code].message
     except KeyError:
@@ -188,6 +264,7 @@ def _error_message(code: str) -> str:
 
 
 def is_retryable(stem: Stem) -> bool:
+    """재시도 버튼을 보여 줄 수 있는지."""
     return (
         stem.status == StemStatus.FAILED
         and stem.error_code not in NON_RETRYABLE_CODES
@@ -196,6 +273,7 @@ def is_retryable(stem: Stem) -> bool:
 
 
 def to_stem_response(db: Session, stem: Stem) -> StemResponse:
+    """GET /stems/{stem_id} 응답으로 변환."""
     latest = _latest_stage_results(db, stem.id)
     stages = [
         StageView(
@@ -233,6 +311,7 @@ def to_stem_response(db: Session, stem: Stem) -> StemResponse:
 
 
 def to_created_response(result: StemRequestResult) -> StemCreatedResponse:
+    """POST /segments/{segment_id}/stems 응답으로 변환."""
     s = result.stem
     return StemCreatedResponse(
         stem_id=s.id,
@@ -261,9 +340,13 @@ def retry_stem(
     stem.retry_count += 1
     stem.status = StemStatus.QUEUED
     stem.error_code = None
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError as e:  # 같은 입력으로 새로 만든 작업이 진행 중
+        db.rollback()
+        raise BusinessException(ErrorCode.STEM_IN_PROGRESS) from e
 
-    (enqueue or _default_enqueue)(stem.id, retry_from)
+    _publish(db, stem, retry_from, enqueue)
     return RetryResponse(
         stem_id=stem.id,
         status=stem.status,

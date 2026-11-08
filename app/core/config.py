@@ -45,6 +45,8 @@ class Settings(BaseSettings):
     ai_sample_rate: int = 44100
     ai_silence_dbfs: float = -50.0  # 이보다 작으면 무음
     ai_separation_min_active_ratio: float = 0.1  # 소리 나는 구간이 이 비율 미만이면 needs_review
+    # 이 시간 넘게 queued로 남은 작업은 등록이 유실된 것으로 보고 실패 처리한다 (재시도 가능)
+    ai_job_queued_stale_sec: int = 1800
 
     @property
     def cors_origin_list(self) -> list[str]:

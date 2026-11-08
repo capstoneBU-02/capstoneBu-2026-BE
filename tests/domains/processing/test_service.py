@@ -3,6 +3,7 @@ from collections.abc import Callable
 from datetime import UTC, datetime
 
 import pytest
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
@@ -227,3 +228,80 @@ def test_concurrent_requests_create_one_stem(
 
     assert sorted(outcomes) == ["STEM_IN_PROGRESS", "created"]
     assert len(enqueue.calls) == 1
+
+
+# ---- 멈춘 작업 복구·등록 실패 (CodeRabbit 리뷰) ----
+
+
+def _age(db: Session, stem: Stem, seconds: int) -> None:
+    db.execute(
+        text("UPDATE stems SET updated_at = now() - make_interval(secs => :s) WHERE id = :id"),
+        {"s": seconds, "id": stem.id},
+    )
+    db.commit()
+    db.expire_all()  # 운영에서는 요청마다 새 세션이므로 같은 조건으로 맞춘다
+
+
+def test_publish_failure_marks_failed_and_retryable(
+    db: Session, segments: FakeSegments, enqueue: EnqueueSpy
+) -> None:
+    segments.add(segment_id=1)
+    enqueue.fail = True
+    stem = service.request_stem(db, WS, 1, enqueue=enqueue).stem
+
+    res = service.to_stem_response(db, service.get_owned_stem(db, WS, stem.id))
+    assert res.status == "failed"
+    assert res.failure is not None
+    assert (res.failure.error_code, res.failure.retryable) == ("AI_WORKER_ERROR", True)
+
+    enqueue.fail = False
+    assert service.retry_stem(db, WS, stem.id, enqueue=enqueue).retry_from == "preprocess"
+
+
+def test_stale_queued_stem_expires_on_read(
+    db: Session, segments: FakeSegments, enqueue: EnqueueSpy
+) -> None:
+    segments.add(segment_id=1)
+    stem = service.request_stem(db, WS, 1, enqueue=enqueue).stem
+    _age(db, stem, get_settings().ai_job_queued_stale_sec + 10)
+
+    got = service.get_owned_stem(db, WS, stem.id)
+    assert (got.status, got.error_code) == ("failed", "AI_WORKER_TIMEOUT")
+
+
+def test_stale_processing_stem_is_replaced_by_new_request(
+    db: Session, segments: FakeSegments, enqueue: EnqueueSpy
+) -> None:
+    segments.add(segment_id=1)
+    stuck = service.request_stem(db, WS, 1, enqueue=enqueue).stem
+    _set_status(db, stuck, StemStatus.PROCESSING, current_stage="separation")
+    _age(db, stuck, get_settings().ai_separation_timeout_sec + 3600)
+
+    fresh = service.request_stem(db, WS, 1, enqueue=enqueue).stem
+    assert fresh.id != stuck.id and fresh.version == 2
+    db.expire_all()
+    assert db.get(Stem, stuck.id).status == "failed"  # type: ignore[union-attr]
+
+
+def test_recent_processing_stem_is_not_expired(
+    db: Session, segments: FakeSegments, enqueue: EnqueueSpy
+) -> None:
+    segments.add(segment_id=1)
+    stem = service.request_stem(db, WS, 1, enqueue=enqueue).stem
+    _set_status(db, stem, StemStatus.PROCESSING, current_stage="preprocess")
+    assert service.get_owned_stem(db, WS, stem.id).status == "processing"
+
+
+def test_retry_conflicts_with_newer_active_stem_is_409(
+    db: Session, segments: FakeSegments, enqueue: EnqueueSpy
+) -> None:
+    segments.add(segment_id=1)
+    old = service.request_stem(db, WS, 1, enqueue=enqueue).stem
+    _set_status(
+        db, old, StemStatus.FAILED, current_stage="separation", error_code="AI_WORKER_ERROR"
+    )
+    service.request_stem(db, WS, 1, enqueue=enqueue)  # 같은 입력의 새 version (queued)
+
+    with pytest.raises(BusinessException) as e:
+        service.retry_stem(db, WS, old.id, enqueue=enqueue)
+    assert e.value.error_code is ErrorCode.STEM_IN_PROGRESS

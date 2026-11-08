@@ -17,6 +17,8 @@ from app.core.base_entity import Base, SoftDeleteMixin, TimestampMixin
 
 
 class StemStatus(StrEnum):
+    """기타 음원 작업 상태. success·needs_review면 타브 생성 가능."""
+
     QUEUED = "queued"
     PROCESSING = "processing"
     SUCCESS = "success"
@@ -26,11 +28,15 @@ class StemStatus(StrEnum):
 
 
 class StemStage(StrEnum):
+    """처리 단계. 분리 음원은 separation을 skipped로 남긴다."""
+
     PREPROCESS = "preprocess"
     SEPARATION = "separation"
 
 
 class StageStatus(StrEnum):
+    """단계 결과 상태 (stem_stage_results.status)."""
+
     QUEUED = "queued"
     PROCESSING = "processing"
     SUCCESS = "success"
@@ -78,6 +84,8 @@ class Stem(Base, TimestampMixin, SoftDeleteMixin):
     current_stage: Mapped[str | None] = mapped_column(String(20))
     bypass_separation: Mapped[bool]
     storage_key: Mapped[str | None] = mapped_column(String(500))  # guitar.wav
+    # preprocess가 실제로 넣은 앞쪽 여유. separate는 설정값이 아니라 이 값으로 자른다
+    input_pad_ms: Mapped[int | None]
     review_reason: Mapped[str | None] = mapped_column(String(50))
     input_hash: Mapped[str] = mapped_column(String(64))
     config_version: Mapped[str] = mapped_column(String(20))

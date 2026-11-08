@@ -1,4 +1,5 @@
 from collections.abc import Callable
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -136,3 +137,97 @@ def test_redelivered_finished_stage_is_skipped(
     # acks_late로 같은 작업이 다시 와도 다시 실행하지 않고 chain은 계속된다
     assert run_stage(stem.id, StemStage.PREPROCESS, fail(RuntimeError()), session_factory)
     assert _results(db, stem.id) == [("preprocess", "success", 1, None)]
+
+
+def test_preprocess_stores_input_pad(
+    db: Session, stem: Stem, session_factory: Callable[[], Session]
+) -> None:
+    def work(db: Session, s: Stem, tmp: Path) -> StageOutcome:
+        return StageOutcome(output_key="in.wav", input_pad_ms=300)
+
+    run_stage(stem.id, StemStage.PREPROCESS, work, session_factory)
+    assert _reload(db, stem).input_pad_ms == 300
+
+
+def test_stage_running_elsewhere_is_not_started_again(
+    db: Session, stem: Stem, session_factory: Callable[[], Session]
+) -> None:
+    db.add(
+        StemStageResult(
+            stem_id=stem.id,
+            stage="preprocess",
+            status="processing",
+            attempt=1,
+            started_at=datetime.now(UTC),
+        )
+    )
+    db.commit()
+    called: list[int] = []
+
+    def work(db: Session, s: Stem, tmp: Path) -> StageOutcome:
+        called.append(1)
+        return StageOutcome(output_key="x")
+
+    assert not run_stage(stem.id, StemStage.PREPROCESS, work, session_factory)
+    assert called == []
+
+
+def test_superseded_attempt_does_not_overwrite_stem(
+    db: Session, stem: Stem, session_factory: Callable[[], Session]
+) -> None:
+    def work(db_: Session, s: Stem, tmp: Path) -> StageOutcome:
+        # 실행 도중 다른 워커가 같은 단계의 더 새 시도를 시작했다
+        with session_factory() as other:
+            other.add(
+                StemStageResult(
+                    stem_id=s.id,
+                    stage="preprocess",
+                    status="processing",
+                    attempt=2,
+                    started_at=datetime.now(UTC),
+                )
+            )
+            other.commit()
+        raise RuntimeError("late failure")
+
+    assert not run_stage(stem.id, StemStage.PREPROCESS, work, session_factory)
+    s = _reload(db, stem)
+    assert s.status == "processing" and s.error_code is None  # 실패로 덮어쓰지 않음
+    assert _results(db, stem.id)[0] == ("preprocess", "failed", 1, "AI_WORKER_ERROR")
+
+
+def test_separate_work_bypass_trims_without_model(
+    db: Session, stem: Stem, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """분리 음원은 분리 모델을 부르지 않고, 저장된 여유만큼 잘라 올린다."""
+    from app.domains.processing import keys, tasks
+    from app.domains.processing.pipeline import separation
+
+    stem.bypass_separation = True
+    stem.input_pad_ms = 300
+    calls: dict[str, object] = {}
+    monkeypatch.setattr(tasks.storage, "download_file", lambda key, path: calls.update(dl=key))
+    monkeypatch.setattr(
+        tasks.storage, "upload_file", lambda path, key, ct: calls.update(up=(key, ct))
+    )
+    monkeypatch.setattr(
+        separation, "trim", lambda src, out, start, dur: calls.update(trim=(start, dur))
+    )
+    monkeypatch.setattr(separation, "active_ratio", lambda path, silence_dbfs: 0.9)
+
+    def no_model(*a: object, **k: object) -> None:
+        raise AssertionError("분리 모델을 부르면 안 됨")
+
+    monkeypatch.setattr(separation, "separate_guitar", no_model)
+
+    out = tasks.separate_work(db, stem, tmp_path)
+
+    assert calls["dl"] == keys.input_key(stem)
+    assert calls["trim"] == (300, stem.end_ms - stem.start_ms)
+    assert calls["up"] == (keys.guitar_key(stem), "audio/wav")
+    assert (out.skipped, out.model, out.review_reason, out.output_key) == (
+        True,
+        None,
+        None,
+        keys.guitar_key(stem),
+    )
