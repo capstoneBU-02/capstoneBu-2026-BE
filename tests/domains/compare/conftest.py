@@ -66,6 +66,10 @@ class FakeStorage:
         self.files[key] = data
 
     def read_bytes(self, key: str) -> bytes:
+        from botocore.exceptions import ClientError
+
+        if key not in self.files:
+            raise ClientError({"Error": {"Code": "NoSuchKey"}}, "GetObject")
         return self.files[key]
 
     def download_file(self, key: str, path: str) -> None:

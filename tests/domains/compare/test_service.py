@@ -2,7 +2,7 @@ import json
 from collections.abc import Callable
 
 import pytest
-from sqlalchemy import text
+from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
@@ -122,9 +122,15 @@ def test_in_progress_409_done_reused_failed_new(
     assert _request(db, enqueue).id != first.id
 
 
-def test_publish_failure_marks_failed(db: Session, ready: Stem, enqueue: EnqueueSpy) -> None:
+def test_publish_failure_is_503_and_retry_count_kept(
+    db: Session, ready: Stem, enqueue: EnqueueSpy
+) -> None:
     enqueue.fail = True
-    c = _request(db, enqueue)
+    with pytest.raises(BusinessException) as e:
+        _request(db, enqueue)
+    assert e.value.error_code is ErrorCode.JOB_ENQUEUE_FAILED
+
+    c = db.scalars(select(Comparison)).one()
     res = service.to_status_response(db, service.get_owned_comparison(db, WS, c.id))
     assert res.failure is not None
     assert (res.status, res.failure.error_code, res.failure.retryable) == (
@@ -132,6 +138,19 @@ def test_publish_failure_marks_failed(db: Session, ready: Stem, enqueue: Enqueue
         "AI_WORKER_ERROR",
         True,
     )
+    with pytest.raises(BusinessException):
+        service.retry_comparison(db, WS, c.id, enqueue=enqueue)
+    db.expire_all()
+    assert service.get_owned_comparison(db, WS, c.id).retry_count == 0
+
+
+def test_result_without_result_json_has_no_tempo(
+    db: Session, ready: Stem, enqueue: EnqueueSpy, fake_storage: FakeStorage
+) -> None:
+    c = _request(db, enqueue)
+    _set(db, c, ComparisonStatus.SUCCESS, result_key="missing/result.json")
+    res = service.get_result(db, WS, c.id)
+    assert res.overall_tempo is None and res.regions == []
 
 
 def test_stale_processing_expires(db: Session, ready: Stem, enqueue: EnqueueSpy) -> None:

@@ -7,6 +7,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
+from botocore.exceptions import ClientError
 from sqlalchemy import select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -100,16 +101,30 @@ def _default_enqueue(comparison_id: int, start: ComparisonStage) -> None:
     enqueue_pipeline(comparison_id, start)
 
 
-def _publish(db: Session, c: Comparison, start: ComparisonStage, enqueue: Enqueue | None) -> None:
-    """commit 후 작업을 등록한다. 등록이 실패하면 바로 실패로 기록해 재시도할 수 있게 한다."""
+def _publish(
+    db: Session,
+    c: Comparison,
+    start: ComparisonStage,
+    enqueue: Enqueue | None,
+    *,
+    undo_retry: bool = False,
+) -> None:
+    """commit 후 작업을 등록한다. 등록이 실패하면 503으로 알린다.
+
+    행은 failed(AI_WORKER_ERROR)로 남겨 진행 중으로 묶이지 않게 하고, 재시도였다면 횟수를 되돌린다.
+    등록 직전에 프로세스가 죽는 경우는 expire_if_stale이 queued 대기 시간으로 복구한다.
+    """
     try:
         (enqueue or _default_enqueue)(c.id, start)
-    except Exception:
+    except Exception as e:
         logger.exception("comparison %s 작업 등록 실패", c.id)
         c.status = ComparisonStatus.FAILED
         c.current_stage = start
         c.error_code = ErrorCode.AI_WORKER_ERROR.code
+        if undo_retry:
+            c.retry_count -= 1
         db.commit()
+        raise BusinessException(ErrorCode.JOB_ENQUEUE_FAILED) from e
 
 
 def is_stale(c: Comparison, now: datetime | None = None) -> bool:
@@ -309,7 +324,13 @@ def get_result(db: Session, workspace_id: int, comparison_id: int) -> Comparison
     stem = db.get(Stem, c.stem_id)
     overall: OverallTempoView | None = None
     if c.result_key:
-        body = json.loads(storage.read_bytes(c.result_key))
+        try:
+            body = json.loads(storage.read_bytes(c.result_key))
+        except ClientError as e:
+            if e.response.get("Error", {}).get("Code") not in ("NoSuchKey", "404"):
+                raise  # 객체 없음이 아닌 저장소 오류는 그대로 올린다
+            logger.warning("comparison %s result.json 없음 — overall_tempo 없이 응답", c.id)
+            body = {}
         if body.get("overall_tempo"):
             overall = OverallTempoView(**body["overall_tempo"])
 
@@ -434,7 +455,7 @@ def retry_comparison(
         db.rollback()
         raise BusinessException(ErrorCode.COMPARISON_IN_PROGRESS) from e
 
-    _publish(db, c, retry_from, enqueue)
+    _publish(db, c, retry_from, enqueue, undo_retry=True)
     return RetryResponse(
         comparison_id=c.id,
         status=c.status,

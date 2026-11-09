@@ -180,3 +180,34 @@ def test_enqueue_pipeline_starts_from_stage(monkeypatch: pytest.MonkeyPatch) -> 
     monkeypatch.setattr(tasks, "chain", FakeChain)
     tasks.enqueue_pipeline(7, ComparisonStage.TRANSCRIPTION)
     assert sent == [["compare.transcribe", "compare.compare"]]
+
+
+def test_stage_success_returns_to_queued_until_next_stage(
+    db: Session,
+    comparison: Comparison,
+    fake_judge: dict[str, object],
+    session_factory: Callable[[], Session],
+) -> None:
+    """다음 단계를 큐에서 기다리는 시간이 실행 시간으로 세어지지 않게 queued로 돌려 둔다."""
+    tasks.run_stage(comparison.id, ComparisonStage.ALIGN, tasks.align_work, session_factory)
+    c = _reload(db, comparison)
+    assert (c.status, c.current_stage) == ("queued", "align")
+    assert not service.is_stale(c)
+
+
+def test_db_error_inside_work_still_records_failure(
+    db: Session,
+    comparison: Comparison,
+    monkeypatch: pytest.MonkeyPatch,
+    session_factory: Callable[[], Session],
+) -> None:
+    """작업 중 SQL 오류로 트랜잭션이 깨져도 실패가 기록된다."""
+    from sqlalchemy import text as sql
+
+    def broken(db_: Session, c: Comparison, tmp: object) -> tasks.StageOutcome:
+        db_.execute(sql("SELECT * FROM no_such_table"))
+        raise AssertionError("도달하지 않음")
+
+    assert not tasks.run_stage(comparison.id, ComparisonStage.ALIGN, broken, session_factory)
+    c = _reload(db, comparison)
+    assert (c.status, c.error_code) == ("failed", "AI_WORKER_ERROR")

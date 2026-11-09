@@ -84,6 +84,11 @@ class ErrorCode(Enum):
         "분석 시간이 초과되었습니다. 잠시 후 다시 시도해 주세요.",
     )
     AI_WORKER_ERROR = (500, "AI_WORKER_ERROR", "처리 중 오류가 발생했습니다.")
+    JOB_ENQUEUE_FAILED = (
+        503,
+        "JOB_ENQUEUE_FAILED",
+        "작업을 등록하지 못했습니다. 잠시 후 다시 시도해 주세요.",
+    )
 
     @property
     def status(self) -> int:

@@ -156,6 +156,8 @@ def run_stage(
             error = ErrorCode.AI_WORKER_ERROR
 
         # 결과는 다시 잠근 뒤, 이 시도가 아직 최신일 때만 stem에 반영한다
+        # 작업 중 DB 오류로 트랜잭션이 깨졌을 수 있으므로 정리한 뒤 다시 잠근다
+        db.rollback()
         locked = _lock_stem(db, stem_id)
         newest = db.scalar(
             select(func.max(StemStageResult.attempt)).where(
@@ -195,6 +197,9 @@ def run_stage(
             locked.storage_key = outcome.output_key
             locked.review_reason = outcome.review_reason
             locked.status = StemStatus.NEEDS_REVIEW if outcome.review_reason else StemStatus.SUCCESS
+        else:
+            # 다음 단계를 큐에서 기다리는 동안은 queued (대기 시간을 실행 시간으로 세지 않는다)
+            locked.status = StemStatus.QUEUED
         db.commit()
         return True
 

@@ -199,7 +199,9 @@ def run_stage(
             logger.exception("comparison %s %s 처리 중 오류", comparison_id, stage)
             error = ErrorCode.AI_WORKER_ERROR
 
-        # 다시 잠근 뒤, 이 시도가 아직 최신일 때만 비교에 반영한다
+        # 작업 중 DB 오류로 트랜잭션이 깨졌을 수 있으므로 정리한 뒤,
+        # 다시 잠그고 이 시도가 아직 최신일 때만 비교에 반영한다
+        db.rollback()
         locked = _lock(db, comparison_id)
         newest = db.scalar(
             select(func.max(ComparisonStageResult.attempt)).where(
@@ -246,6 +248,9 @@ def run_stage(
         if stage == LAST_STAGE:
             _save_regions(db, locked, outcome.regions)
             locked.status = ComparisonStatus.SUCCESS
+        else:
+            # 다음 단계를 큐에서 기다리는 동안은 queued (대기 시간을 실행 시간으로 세지 않는다)
+            locked.status = ComparisonStatus.QUEUED
         db.commit()
         return True
 
