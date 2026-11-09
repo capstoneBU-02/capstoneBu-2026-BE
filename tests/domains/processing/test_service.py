@@ -10,7 +10,7 @@ from app.core.config import get_settings
 from app.core.exceptions import BusinessException, ErrorCode
 from app.domains.processing import service
 from app.domains.processing.models import Stem, StemStage, StemStageResult, StemStatus
-from tests.domains.processing.conftest import EnqueueSpy, FakeSegments
+from tests.domains.conftest import EnqueueSpy, FakeSegments
 
 WS = 10
 

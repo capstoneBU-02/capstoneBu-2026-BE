@@ -8,7 +8,7 @@ from app.core.database import get_db
 from app.domains.processing import service, sources
 from app.domains.processing.models import StemStatus
 from app.main import create_app
-from tests.domains.processing.conftest import EnqueueSpy, FakeSegments
+from tests.domains.conftest import EnqueueSpy, FakeSegments
 
 WS = 10
 

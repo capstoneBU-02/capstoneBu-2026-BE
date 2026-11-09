@@ -46,6 +46,28 @@ class ErrorCode(Enum):
     STEM_NOT_CANCELABLE = (409, "STEM_NOT_CANCELABLE", "중단할 수 없는 상태입니다.")
     RETRY_LIMIT_EXCEEDED = (409, "RETRY_LIMIT_EXCEEDED", "재시도 횟수를 모두 사용했습니다.")
 
+    # Performance (REC)
+    PERFORMANCE_NOT_FOUND = (404, "PERFORMANCE_NOT_FOUND", "연주를 찾을 수 없습니다.")
+
+    # Compare (CMP)
+    SEGMENT_RANGE_MISMATCH = (
+        409,
+        "SEGMENT_RANGE_MISMATCH",
+        "구간이 바뀌기 전에 녹음한 연주입니다. 다시 녹음해 주세요.",
+    )
+    COMPARISON_NOT_FOUND = (404, "COMPARISON_NOT_FOUND", "비교 결과를 찾을 수 없습니다.")
+    COMPARISON_IN_PROGRESS = (409, "COMPARISON_IN_PROGRESS", "같은 연주를 이미 비교하고 있습니다.")
+    COMPARISON_NOT_READY = (409, "COMPARISON_NOT_READY", "비교가 아직 끝나지 않았습니다.")
+    COMPARISON_NOT_RETRYABLE = (
+        409,
+        "COMPARISON_NOT_RETRYABLE",
+        "다시 시도할 수 없는 비교입니다.",
+    )
+    REGION_NOT_FOUND = (404, "REGION_NOT_FOUND", "구간을 찾을 수 없습니다.")
+    # 비교 작업 실패 코드 (HTTP 응답이 아니라 failure.error_code로만 나간다)
+    PERFORMANCE_INVALID_AUDIO = (400, "PERFORMANCE_INVALID_AUDIO", "연주 음원을 읽을 수 없습니다.")
+    STEM_MISSING = (404, "STEM_MISSING", "기준 기타 음원을 찾을 수 없습니다.")
+
     # AI 파이프라인
     PREPROCESS_INVALID_AUDIO = (400, "PREPROCESS_INVALID_AUDIO", "오디오 파일을 읽을 수 없습니다.")
     SEPARATION_NO_GUITAR = (422, "SEPARATION_NO_GUITAR", "음원에서 기타 소리를 찾지 못했습니다.")

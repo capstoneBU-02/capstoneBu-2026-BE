@@ -11,7 +11,7 @@ from app.core.exceptions import ErrorCode
 from app.domains.processing import service
 from app.domains.processing.models import Stem, StemStage, StemStageResult, StemStatus
 from app.domains.processing.tasks import StageError, StageOutcome, run_stage
-from tests.domains.processing.conftest import EnqueueSpy, FakeSegments
+from tests.domains.conftest import EnqueueSpy, FakeSegments
 
 WS = 10
 

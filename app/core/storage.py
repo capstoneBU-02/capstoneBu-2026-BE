@@ -63,6 +63,19 @@ def upload_file(path: str, key: str, content_type: str) -> None:
     )
 
 
+def read_bytes(key: str) -> bytes:
+    """저장소 key의 내용을 읽는다 (작은 JSON 결과 조회용)."""
+    obj = get_s3().get_object(Bucket=get_settings().s3_bucket, Key=key)
+    return bytes(obj["Body"].read())
+
+
+def put_bytes(key: str, data: bytes, content_type: str) -> None:
+    """작은 데이터(JSON 등)를 저장소 key로 올린다."""
+    get_s3().put_object(
+        Bucket=get_settings().s3_bucket, Key=key, Body=data, ContentType=content_type
+    )
+
+
 def presigned_upload_url(key: str, content_type: str) -> str:
     s = get_settings()
     return _get_public_s3().generate_presigned_url(

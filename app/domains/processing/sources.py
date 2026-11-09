@@ -24,6 +24,7 @@ class SegmentSource:
     is_separated_stem: bool  # tracks.is_separated_stem
     track_storage_key: str  # 원본 파일 경로
     track_file_hash: str  # 원본 파일 해시 (input_hash 계산용)
+    name: str | None = None  # 구성 이름 (INTRO, VERSE ...). 비교 결과 표시에 쓴다
 
 
 def load_segment(db: Session, workspace_id: int, segment_id: int) -> SegmentSource:
