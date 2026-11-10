@@ -12,6 +12,7 @@ from app.core.storage import ensure_bucket
 from app.domains.compare.router import router as compare_router
 from app.domains.health.router import router as health_router
 from app.domains.processing.router import router as processing_router
+from app.domains.segment.router import router as segment_router
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s - %(message)s")
 logger = logging.getLogger(__name__)
@@ -51,6 +52,7 @@ def create_app() -> FastAPI:
     app.include_router(health_router, prefix=settings.api_prefix)
     app.include_router(processing_router, prefix=settings.api_prefix)
     app.include_router(compare_router, prefix=settings.api_prefix)
+    app.include_router(segment_router, prefix=settings.api_prefix)
 
     return app
 
