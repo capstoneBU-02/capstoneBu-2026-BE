@@ -31,7 +31,6 @@ class ErrorCode(Enum):
 
     # 도메인별 코드는 아래에 추가 (예: Workspace, Song, Section, Job)
 
-    
     # Segment (SEG)
     SEGMENT_NOT_FOUND = (404, "SEGMENT_NOT_FOUND", "구간을 찾을 수 없습니다.")
     INVALID_SEGMENT_RANGE = (
@@ -44,7 +43,6 @@ class ErrorCode(Enum):
         "SEGMENT_CREATE_FAILED",
         "구간 생성에 실패했습니다.",
     )
-
 
     # Processing (JOB)
     STEM_NOT_FOUND = (404, "STEM_NOT_FOUND", "기타 음원을 찾을 수 없습니다.")
