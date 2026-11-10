@@ -48,6 +48,11 @@ class Settings(BaseSettings):
     # 이 시간 넘게 queued로 남은 작업은 등록이 유실된 것으로 보고 실패 처리한다 (재시도 가능)
     ai_job_queued_stale_sec: int = 1800
 
+    # 연주 비교(CMP). 제한 시간은 D12·D16 확정 전 초기값
+    ai_align_timeout_sec: int = 120
+    ai_compare_transcription_timeout_sec: int = 300
+    ai_compare_timeout_sec: int = 60
+
     @property
     def cors_origin_list(self) -> list[str]:
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]

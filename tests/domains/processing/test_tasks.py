@@ -11,7 +11,7 @@ from app.core.exceptions import ErrorCode
 from app.domains.processing import service
 from app.domains.processing.models import Stem, StemStage, StemStageResult, StemStatus
 from app.domains.processing.tasks import StageError, StageOutcome, run_stage
-from tests.domains.processing.conftest import EnqueueSpy, FakeSegments
+from tests.domains.conftest import EnqueueSpy, FakeSegments
 
 WS = 10
 
@@ -57,7 +57,7 @@ def test_full_pipeline_success(
     db: Session, stem: Stem, session_factory: Callable[[], Session]
 ) -> None:
     assert run_stage(stem.id, StemStage.PREPROCESS, ok("in.wav"), session_factory)
-    assert _reload(db, stem).status == StemStatus.PROCESSING
+    assert _reload(db, stem).status == StemStatus.QUEUED  # 다음 단계를 기다리는 동안 queued
 
     assert run_stage(stem.id, StemStage.SEPARATION, ok("guitar.wav"), session_factory)
     s = _reload(db, stem)

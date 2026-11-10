@@ -10,7 +10,7 @@ from app.core.config import get_settings
 from app.core.exceptions import BusinessException, ErrorCode
 from app.domains.processing import service
 from app.domains.processing.models import Stem, StemStage, StemStageResult, StemStatus
-from tests.domains.processing.conftest import EnqueueSpy, FakeSegments
+from tests.domains.conftest import EnqueueSpy, FakeSegments
 
 WS = 10
 
@@ -242,20 +242,33 @@ def _age(db: Session, stem: Stem, seconds: int) -> None:
     db.expire_all()  # 운영에서는 요청마다 새 세션이므로 같은 조건으로 맞춘다
 
 
-def test_publish_failure_marks_failed_and_retryable(
+def test_publish_failure_is_503_and_leaves_retryable_failed(
     db: Session, segments: FakeSegments, enqueue: EnqueueSpy
 ) -> None:
     segments.add(segment_id=1)
     enqueue.fail = True
-    stem = service.request_stem(db, WS, 1, enqueue=enqueue).stem
+    with pytest.raises(BusinessException) as e:
+        service.request_stem(db, WS, 1, enqueue=enqueue)
+    assert e.value.error_code is ErrorCode.JOB_ENQUEUE_FAILED
 
+    stem = service.get_current_stem(db, 1, 1000, 5000)
+    assert stem is not None
     res = service.to_stem_response(db, service.get_owned_stem(db, WS, stem.id))
-    assert res.status == "failed"
     assert res.failure is not None
-    assert (res.failure.error_code, res.failure.retryable) == ("AI_WORKER_ERROR", True)
+    assert (res.status, res.failure.error_code, res.failure.retryable) == (
+        "failed",
+        "AI_WORKER_ERROR",
+        True,
+    )
+
+    # 재시도 등록도 실패하면 503이고 재시도 횟수는 쓰지 않는다
+    with pytest.raises(BusinessException):
+        service.retry_stem(db, WS, stem.id, enqueue=enqueue)
+    db.expire_all()
+    assert service.get_owned_stem(db, WS, stem.id).retry_count == 0
 
     enqueue.fail = False
-    assert service.retry_stem(db, WS, stem.id, enqueue=enqueue).retry_from == "preprocess"
+    assert service.retry_stem(db, WS, stem.id, enqueue=enqueue).retry_count == 1
 
 
 def test_stale_queued_stem_expires_on_read(
