@@ -14,10 +14,10 @@ WS = 10
 
 
 def test_requires_session(client: TestClient) -> None:
-    """ACC 세션 연결 전에는 401 (임시 의존성)."""
+    """세션 쿠키가 없으면 401."""
     res = client.post("/api/v1/segments/1/stems")
     assert res.status_code == 401
-    assert res.json()["error"]["code"] == "UNAUTHORIZED"
+    assert res.json()["error"]["code"] == "UNAUTHORIZED_SESSION"
 
 
 @pytest.fixture

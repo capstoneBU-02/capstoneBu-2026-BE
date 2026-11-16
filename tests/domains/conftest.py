@@ -32,6 +32,11 @@ TABLES = [
 ]
 
 
+# 테스트가 쓰는 워크스페이스 (stems·comparisons.workspace_id FK).
+# 자동 증가 번호(1부터)와 겹치지 않게 큰 값.
+TEST_WORKSPACE_IDS = (10, 99)
+
+
 def _test_database_url() -> URL:
     """DATABASE_URL과 같은 서버의 '<이름>_test' DB. 앱 DB의 데이터는 건드리지 않는다."""
     url = make_url(get_settings().database_url)
@@ -71,6 +76,12 @@ def db_engine() -> Iterator[Engine]:
 @pytest.fixture
 def session_factory(db_engine: Engine) -> Iterator[Callable[[], Session]]:
     factory = sessionmaker(bind=db_engine, autoflush=False, expire_on_commit=False)
+    with db_engine.begin() as conn:
+        for ws_id in TEST_WORKSPACE_IDS:
+            conn.execute(
+                text("INSERT INTO workspaces (id, owner_type) VALUES (:id, 'TESTER_CODE')"),
+                {"id": ws_id},
+            )
     yield factory
     names = ", ".join(t.name for t in reversed(TABLES))
     with db_engine.begin() as conn:

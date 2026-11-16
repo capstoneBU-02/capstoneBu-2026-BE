@@ -52,7 +52,8 @@ STAGE_ORDER = (StemStage.PREPROCESS, StemStage.SEPARATION)
 class Stem(Base, TimestampMixin, SoftDeleteMixin):
     """구간의 기타 음원 준비 작업과 결과. 다시 만들면 새 행(version + 1)을 만든다.
 
-    segment_id는 segments FK. workspace_id·track_id는 ACC·IN 모델이 들어오면 FK로 바꾼다.
+    workspace_id는 workspaces FK, segment_id는 segments FK.
+    track_id는 IN 모델이 들어오면 FK로 바꾼다.
     """
 
     __tablename__ = "stems"
@@ -72,7 +73,7 @@ class Stem(Base, TimestampMixin, SoftDeleteMixin):
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
-    workspace_id: Mapped[int] = mapped_column(BigInteger, index=True)
+    workspace_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("workspaces.id"), index=True)
     track_id: Mapped[int] = mapped_column(BigInteger, index=True)
     # segment_id 단독 인덱스는 두지 않는다 (UNIQUE(segment_id, version)·ix_stems_current가 대신)
     segment_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("segments.id"))
