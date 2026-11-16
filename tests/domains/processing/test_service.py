@@ -369,3 +369,16 @@ def test_stem_requires_existing_segment(db: Session) -> None:
     with pytest.raises(IntegrityError):
         db.commit()
     db.rollback()
+
+
+def test_load_segment_reads_fresh_values_in_same_session(
+    db: Session, segments: FakeSegments
+) -> None:
+    """같은 세션에서 먼저 읽었어도, 다른 곳에서 수정한 구간 범위를 다시 읽는다."""
+    from app.domains.processing import sources
+
+    segments.add(segment_id=3, start_ms=1000, end_ms=5000)
+    assert sources.load_segment(db, WS, 3).start_ms == 1000
+    segments.add(segment_id=3, start_ms=2000, end_ms=6000)  # 다른 세션에서 수정
+    src = sources.load_segment(db, WS, 3)
+    assert (src.start_ms, src.end_ms) == (2000, 6000)

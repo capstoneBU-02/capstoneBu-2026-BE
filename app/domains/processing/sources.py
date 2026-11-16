@@ -7,6 +7,7 @@ load_track·get_current_workspace_id만 임시로 두고, 모델이 들어오면
 from dataclasses import dataclass
 
 from fastapi import Request
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.exceptions import BusinessException, ErrorCode
@@ -47,9 +48,19 @@ def load_track(db: Session, track_id: int) -> TrackSource:
     raise BusinessException(ErrorCode.SEGMENT_NOT_FOUND, "트랙 조회가 아직 연결되지 않았습니다.")
 
 
-def load_segment(db: Session, workspace_id: int, segment_id: int) -> SegmentSource:
-    """구간과 그 음원을 조회한다. 없거나 다른 워크스페이스 소유면 SEGMENT_NOT_FOUND."""
-    segment = db.get(Segment, segment_id)
+def load_segment(
+    db: Session, workspace_id: int, segment_id: int, *, lock: bool = False
+) -> SegmentSource:
+    """구간과 그 음원을 조회한다. 없거나 다른 워크스페이스 소유면 SEGMENT_NOT_FOUND.
+
+    lock이면 구간 행을 공유 잠금(FOR SHARE)으로 읽는다. 작업을 만드는 동안 구간 수정이
+    끝나기를 기다리게 해서, 읽은 범위와 저장되는 범위가 어긋나지 않게 한다.
+    세션에 남은 예전 값이 아니라 항상 DB의 최신 값을 읽는다.
+    """
+    stmt = select(Segment).where(Segment.id == segment_id)
+    if lock:
+        stmt = stmt.with_for_update(read=True)
+    segment = db.scalars(stmt.execution_options(populate_existing=True)).first()
     if segment is None:
         raise BusinessException(ErrorCode.SEGMENT_NOT_FOUND)
     track = load_track(db, segment.track_id)

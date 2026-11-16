@@ -48,6 +48,7 @@ from app.domains.compare.schemas import (
 from app.domains.processing import service as stem_service
 from app.domains.processing import sources as stem_sources
 from app.domains.processing.models import READY_STATUSES, Stem
+from app.domains.segment.models import Segment
 
 logger = logging.getLogger(__name__)
 
@@ -173,7 +174,7 @@ def request_comparison(
     """
     settings = get_settings()
     perf = sources.load_performance(db, workspace_id, performance_id)
-    seg = stem_sources.load_segment(db, workspace_id, perf.segment_id)
+    seg = stem_sources.load_segment(db, workspace_id, perf.segment_id, lock=True)
     if (perf.start_ms, perf.end_ms) != (seg.start_ms, seg.end_ms):
         raise BusinessException(ErrorCode.SEGMENT_RANGE_MISMATCH)
 
@@ -308,11 +309,9 @@ def to_status_response(db: Session, c: Comparison) -> ComparisonResponse:
 
 
 def _segment_name(db: Session, c: Comparison) -> str | None:
-    """현재 구간 이름 (SEG 연결 전이면 None)."""
-    try:
-        return stem_sources.load_segment(db, c.workspace_id, c.segment_id).name
-    except BusinessException:
-        return None
+    """현재 구간 이름. 비교의 소유권은 이미 확인했으므로 segments에서 이름만 읽는다."""
+    segment = db.get(Segment, c.segment_id)
+    return segment.name if segment else None
 
 
 def get_result(db: Session, workspace_id: int, comparison_id: int) -> ComparisonResultResponse:
@@ -393,7 +392,7 @@ def get_playback(db: Session, workspace_id: int, comparison_id: int) -> Playback
 
     try:
         original_key: str | None = stem_sources.load_track_storage_key(db, c.track_id)
-    except (NotImplementedError, BusinessException):
+    except BusinessException:  # IN 연결 전이거나 트랙이 없으면 원곡만 비활성
         original_key = None
     try:
         perf_key: str | None = sources.load_performance(

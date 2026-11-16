@@ -153,7 +153,7 @@ def request_stem(
 ) -> StemRequestResult:
     """기타 음원 준비 요청. 같은 입력이 진행 중이면 409, 완료돼 있으면 재사용한다."""
     settings = get_settings()
-    src = sources.load_segment(db, workspace_id, segment_id)
+    src = sources.load_segment(db, workspace_id, segment_id, lock=True)
     _lock_segment(db, segment_id)
     input_hash = compute_input_hash(src, settings)
 
