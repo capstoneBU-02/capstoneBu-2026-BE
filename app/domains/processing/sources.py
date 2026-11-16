@@ -1,16 +1,18 @@
 """다른 도메인(SEG·IN·ACC)에서 읽어 오는 값.
 
-구간은 SEG의 segments 테이블에서 읽는다. 트랙(IN)·세션(ACC)은 아직 없어서
-load_track·get_current_workspace_id만 임시로 두고, 모델이 들어오면 그 함수 본문만 바꾼다.
+구간은 SEG의 segments 테이블, 세션은 ACC의 get_current_workspace에서 읽는다.
+트랙(IN)은 아직 없어서 load_track만 임시로 두고, 모델이 들어오면 그 함수 본문만 바꾼다.
 """
 
 from dataclasses import dataclass
 
-from fastapi import Request
+from fastapi import Depends
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.exceptions import BusinessException, ErrorCode
+from app.domains.account.deps import get_current_workspace
+from app.domains.account.models import Workspace
 from app.domains.segment.models import Segment
 
 
@@ -84,9 +86,6 @@ def load_track_storage_key(db: Session, track_id: int) -> str:
     return load_track(db, track_id).storage_key
 
 
-def get_current_workspace_id(request: Request) -> int:
-    """세션 쿠키로 확인한 워크스페이스 ID.
-
-    TODO(ACC): 세션 의존성이 머지되면 그 함수로 교체 (이슈 #19). 그 전에는 항상 401.
-    """
-    raise BusinessException(ErrorCode.UNAUTHORIZED)
+def get_current_workspace_id(workspace: Workspace = Depends(get_current_workspace)) -> int:
+    """세션 쿠키(ws_token)로 확인한 워크스페이스 ID. 없거나 만료면 401 UNAUTHORIZED_SESSION."""
+    return workspace.id
