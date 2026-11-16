@@ -60,7 +60,8 @@ STAGE_ORDER = (ComparisonStage.ALIGN, ComparisonStage.TRANSCRIPTION, ComparisonS
 class Comparison(Base, TimestampMixin, SoftDeleteMixin):
     """연주 비교 작업과 결과. 결과 본문은 result_key(JSON), 구간은 comparison_regions.
 
-    workspace_id·performance_id·segment_id·tab_id는 ACC·REC·SEG·TAB 모델이 들어오면 FK로 바꾼다.
+    segment_id는 segments FK.
+    workspace_id·performance_id·tab_id는 ACC·REC·TAB 모델이 들어오면 FK로 바꾼다.
     """
 
     __tablename__ = "comparisons"
@@ -79,7 +80,7 @@ class Comparison(Base, TimestampMixin, SoftDeleteMixin):
     workspace_id: Mapped[int] = mapped_column(BigInteger, index=True)
     track_id: Mapped[int] = mapped_column(BigInteger)  # 저장소 key용
     performance_id: Mapped[int] = mapped_column(BigInteger, index=True)
-    segment_id: Mapped[int] = mapped_column(BigInteger, index=True)
+    segment_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("segments.id"), index=True)
     stem_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("stems.id"), index=True)
     tab_id: Mapped[int | None] = mapped_column(BigInteger)  # 기준 타브 (없으면 null)
     start_ms: Mapped[int]  # 비교한 구간 범위 (연주 당시 = 기준 음원 범위)

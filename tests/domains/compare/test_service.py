@@ -90,9 +90,9 @@ def test_uses_stem_of_current_range(
     make_stem: Callable[..., Stem],
     enqueue: EnqueueSpy,
 ) -> None:
+    segments.add(segment_id=1, start_ms=2000, end_ms=6000)  # 구간이 먼저 있어야 한다 (FK)
     make_stem(start_ms=0, end_ms=4000, version=1)  # 이전 범위
     current = make_stem(start_ms=2000, end_ms=6000, version=2)
-    segments.add(segment_id=1, start_ms=2000, end_ms=6000)
     performances.add(500, start_ms=2000, end_ms=6000)
     assert _request(db, enqueue).stem_id == current.id
 
@@ -220,17 +220,27 @@ def test_result_contains_baseline_summary_regions(
     assert [r.start_ms for r in res.regions] == [100, 3200]  # 시간 순
 
 
-def test_playback_is_partial_without_original(
-    db: Session, ready: Stem, enqueue: EnqueueSpy, fake_storage: FakeStorage
+def test_playback_tracks_and_partial(
+    db: Session,
+    ready: Stem,
+    enqueue: EnqueueSpy,
+    fake_storage: FakeStorage,
+    segments: FakeSegments,
 ) -> None:
     c = _request(db, enqueue)
     _done(db, c, fake_storage)
 
     res = service.get_playback(db, WS, c.id)
     by_type = {t.type: t for t in res.tracks}
-    assert res.is_partial  # 원곡 경로는 IN 연결 전이라 없음
-    assert not by_type["original"].available and by_type["original"].offset_ms == 1000
+    assert not res.is_partial
+    assert by_type["original"].offset_ms == 1000  # 원곡 파일 안의 구간 시작 위치
     assert by_type["stem"].url and by_type["performance"].url
+
+    segments.tracks.clear()  # 원곡을 찾을 수 없으면 그 항목만 비활성
+    res = service.get_playback(db, WS, c.id)
+    by_type = {t.type: t for t in res.tracks}
+    assert res.is_partial and not by_type["original"].available
+    assert by_type["original"].url is None
 
 
 def test_check_region(

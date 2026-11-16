@@ -318,3 +318,54 @@ def test_retry_conflicts_with_newer_active_stem_is_409(
     with pytest.raises(BusinessException) as e:
         service.retry_stem(db, WS, old.id, enqueue=enqueue)
     assert e.value.error_code is ErrorCode.STEM_IN_PROGRESS
+
+
+# ---- SEG 연결 (#19) ----
+
+
+def test_load_segment_reads_segments_table(db: Session, segments: FakeSegments) -> None:
+    from app.domains.processing import sources
+
+    segments.add(segment_id=7, start_ms=2000, end_ms=9000, name="CHORUS")
+    src = sources.load_segment(db, WS, 7)
+    assert (src.segment_id, src.start_ms, src.end_ms, src.name) == (7, 2000, 9000, "CHORUS")
+
+
+def test_load_segment_unknown_or_other_workspace_is_404(
+    db: Session, segments: FakeSegments
+) -> None:
+    from app.domains.processing import sources
+
+    with pytest.raises(BusinessException) as e:
+        sources.load_segment(db, WS, 999)
+    assert e.value.error_code is ErrorCode.SEGMENT_NOT_FOUND
+
+    segments.add(segment_id=8, track_id=200, workspace_id=99)
+    with pytest.raises(BusinessException) as e:
+        sources.load_segment(db, WS, 8)
+    assert e.value.error_code is ErrorCode.SEGMENT_NOT_FOUND
+
+
+def test_stem_requires_existing_segment(db: Session) -> None:
+    """stems.segment_id는 segments FK라 없는 구간으로는 만들 수 없다."""
+    from sqlalchemy.exc import IntegrityError
+
+    db.add(
+        Stem(
+            workspace_id=WS,
+            track_id=100,
+            segment_id=12345,
+            start_ms=0,
+            end_ms=1000,
+            version=1,
+            part="guitar",
+            status="queued",
+            bypass_separation=False,
+            input_hash="x",
+            config_version="t",
+            retry_count=0,
+        )
+    )
+    with pytest.raises(IntegrityError):
+        db.commit()
+    db.rollback()
