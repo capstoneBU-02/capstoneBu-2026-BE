@@ -113,3 +113,93 @@ def test_create_segment_rejects_range_exceeding_track_duration(
         assert response.json()["error"]["code"] == "INVALID_SEGMENT_RANGE"
     finally:
         app.dependency_overrides.clear()
+
+
+def test_update_segment_route_exists() -> None:
+    routes = [
+        route
+        for route in router.routes
+        if getattr(route, "path", None) == "/tracks/{track_id}/segments/{segment_id}"
+    ]
+
+    assert len(routes) == 1
+    assert "PATCH" in routes[0].methods
+
+
+def test_update_segment_requires_authentication() -> None:
+    app = create_app()
+
+    with TestClient(app) as client:
+        response = client.patch(
+            "/api/v1/tracks/1/segments/10",
+            json={"start_ms": 7000, "end_ms": 17000},
+        )
+
+    assert response.status_code == 401
+    assert response.json()["error"]["code"] == "UNAUTHORIZED"
+
+
+def test_update_segment_returns_200(monkeypatch) -> None:
+    app = create_app()
+    fake_db = Mock()
+
+    app.dependency_overrides[get_db] = lambda: fake_db
+    app.dependency_overrides[get_verified_track] = lambda: VerifiedTrack(
+        track_id=1,
+        duration_ms=60000,
+    )
+
+    expected = SegmentResponse(
+        segment_id=10,
+        track_id=1,
+        start_ms=7000,
+        end_ms=17000,
+        duration_ms=10000,
+        name=None,
+        version=2,
+        created_at=datetime(2026, 11, 16, tzinfo=UTC),
+    )
+
+    update_mock = Mock(return_value=expected)
+    monkeypatch.setattr(service, "update_segment", update_mock)
+
+    try:
+        with TestClient(app) as client:
+            response = client.patch(
+                "/api/v1/tracks/1/segments/10",
+                json={"start_ms": 7000, "end_ms": 17000},
+            )
+
+        assert response.status_code == 200
+        assert response.json()["success"] is True
+        assert response.json()["data"]["segment_id"] == 10
+        assert response.json()["data"]["version"] == 2
+
+        update_mock.assert_called_once()
+        assert update_mock.call_args.kwargs["segment_id"] == 10
+        assert update_mock.call_args.kwargs["track_id"] == 1
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_update_segment_rejects_invalid_input() -> None:
+    app = create_app()
+    fake_db = Mock()
+
+    app.dependency_overrides[get_db] = lambda: fake_db
+    app.dependency_overrides[get_verified_track] = lambda: VerifiedTrack(
+        track_id=1,
+        duration_ms=60000,
+    )
+
+    try:
+        with TestClient(app) as client:
+            response = client.patch(
+                "/api/v1/tracks/1/segments/10",
+                json={"start_ms": "abc", "end_ms": 17000},
+            )
+
+        assert response.status_code == 400
+        assert response.json()["error"]["code"] == "INVALID_INPUT"
+    finally:
+        app.dependency_overrides.clear()

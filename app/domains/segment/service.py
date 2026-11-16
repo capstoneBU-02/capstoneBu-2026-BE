@@ -3,7 +3,11 @@ from sqlalchemy.orm import Session
 
 from app.core.exceptions import BusinessException, ErrorCode
 from app.domains.segment.models import Segment
-from app.domains.segment.schemas import SegmentCreateRequest, SegmentResponse
+from app.domains.segment.schemas import (
+    SegmentCreateRequest,
+    SegmentResponse,
+    SegmentUpdateRequest,
+)
 
 
 def validate_segment_range(
@@ -62,4 +66,59 @@ def create_segment(
         db.rollback()
         raise BusinessException(
             ErrorCode.SEGMENT_CREATE_FAILED,
+        ) from exc
+
+
+def update_segment(
+    db: Session,
+    track_id: int,
+    segment_id: int,
+    request: SegmentUpdateRequest,
+    track_duration_ms: int,
+) -> SegmentResponse:
+    """기존 구간의 ID를 유지하면서 범위와 버전을 수정한다."""
+    segment = (
+        db.query(Segment)
+        .filter(
+            Segment.id == segment_id,
+            Segment.track_id == track_id,
+        )
+        .first()
+    )
+
+    if segment is None:
+        raise BusinessException(ErrorCode.SEGMENT_NOT_FOUND)
+
+    validate_segment_range(
+        request.start_ms,
+        request.end_ms,
+        track_duration_ms,
+    )
+
+    segment.start_ms = request.start_ms
+    segment.end_ms = request.end_ms
+    segment.version += 1
+
+    try:
+        db.flush()
+        db.refresh(segment)
+
+        result = SegmentResponse(
+            segment_id=segment.id,
+            track_id=segment.track_id,
+            start_ms=segment.start_ms,
+            end_ms=segment.end_ms,
+            duration_ms=segment.end_ms - segment.start_ms,
+            name=segment.name,
+            version=segment.version,
+            created_at=segment.created_at,
+        )
+
+        db.commit()
+        return result
+
+    except SQLAlchemyError as exc:
+        db.rollback()
+        raise BusinessException(
+            ErrorCode.INTERNAL_SERVER_ERROR,
         ) from exc

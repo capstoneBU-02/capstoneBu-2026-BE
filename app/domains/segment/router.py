@@ -10,6 +10,7 @@ from app.domains.segment import service
 from app.domains.segment.schemas import (
     SegmentCreateRequest,
     SegmentResponse,
+    SegmentUpdateRequest,
 )
 
 router = APIRouter(tags=["segment"])
@@ -49,6 +50,27 @@ def create_segment(
     result = service.create_segment(
         db=db,
         track_id=track.track_id,
+        request=request,
+        track_duration_ms=track.duration_ms,
+    )
+    return ApiResponse.ok(result)
+
+
+@router.patch(
+    "/tracks/{track_id}/segments/{segment_id}",
+    response_model=ApiResponse[SegmentResponse],
+)
+def update_segment(
+    segment_id: int,
+    request: SegmentUpdateRequest,
+    db: Session = Depends(get_db),
+    track: VerifiedTrack = Depends(get_verified_track),
+) -> ApiResponse[SegmentResponse]:
+    """기존 구간의 범위와 버전을 수정한다."""
+    result = service.update_segment(
+        db=db,
+        track_id=track.track_id,
+        segment_id=segment_id,
         request=request,
         track_duration_ms=track.duration_ms,
     )

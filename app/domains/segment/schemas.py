@@ -16,6 +16,13 @@ class SegmentCreateRequest(BaseModel):
         return self
 
 
+class SegmentUpdateRequest(BaseModel):
+    """SEG 구간 수정 요청."""
+
+    start_ms: int = Field(ge=0, strict=True)
+    end_ms: int = Field(ge=0, strict=True)
+
+
 class SegmentResponse(BaseModel):
     """SEG 구간 생성 응답."""
 
