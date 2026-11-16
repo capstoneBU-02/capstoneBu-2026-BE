@@ -1,7 +1,7 @@
 """add tracks
 
 Revision ID: a28e73f43072
-Revises: 888f59a294f5
+Revises: 7e89085d6c4c
 Create Date: 2026-11-17 03:10:16.587460
 
 """
@@ -13,7 +13,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = "a28e73f43072"
-down_revision: str | None = "888f59a294f5"
+down_revision: str | None = "7e89085d6c4c"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
