@@ -44,7 +44,14 @@ def preload_ai_models(**_: object) -> None:
     예) from app.domains.<기능>.models_loader import preload; preload(settings)
     """
     logger.info(
-        "AI 모델 사전 로드 (config_version=%s, cache_dir=%s) — 등록된 로더 없음",
+        "AI 모델 사전 로드 (config_version=%s, cache_dir=%s)",
         settings.ai_config_version,
         settings.ai_model_cache_dir,
     )
+    try:
+        from app.domains.tab.pipeline.transcription import preload
+
+        preload(settings)
+    except Exception:
+        # 사전 로드는 첫 작업을 빠르게 하려는 것뿐이다. 실패해도 작업에서 다시 로드한다
+        logger.exception("음 인식 모델 사전 로드 실패")
