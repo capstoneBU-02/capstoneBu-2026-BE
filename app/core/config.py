@@ -33,6 +33,11 @@ class Settings(BaseSettings):
     ai_onset_threshold: float = 0.5
     ai_frame_threshold: float = 0.3
     ai_low_confidence: float = 0.4
+    # 음 인식 후처리 (basic-pitch). 주파수 범위는 표준 튜닝 최저음 근처부터 1현 24프렛 근처까지
+    ai_min_note_length_ms: float = 58.0
+    ai_min_frequency_hz: float = 80.0
+    ai_max_frequency_hz: float = 1320.0
+    ai_note_merge_gap_ms: int = 30  # 같은 음높이가 이 간격 이내로 끊겼다 이어지면 합친다
     ai_separation_rms_db: float = 30.0
     # 타브 운지 Viterbi 비용 가중치. env는 JSON: AI_TAB_WEIGHTS='{"span": 1.0, ...}'
     ai_tab_weights: dict[str, float] = {"span": 1.0, "pos": 0.1, "move": 0.5, "strskip": 0.3}

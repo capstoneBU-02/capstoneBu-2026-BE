@@ -17,6 +17,10 @@ def test_ai_settings_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
     assert s.ai_onset_threshold == 0.5
     assert s.ai_frame_threshold == 0.3
     assert s.ai_low_confidence == 0.4
+    assert s.ai_min_note_length_ms == 58.0
+    assert s.ai_min_frequency_hz == 80.0
+    assert s.ai_max_frequency_hz == 1320.0
+    assert s.ai_note_merge_gap_ms == 30
     assert s.ai_separation_rms_db == 30.0
     assert s.ai_tab_weights == {"span": 1.0, "pos": 0.1, "move": 0.5, "strskip": 0.3}
     assert s.ai_tab_max_fret == 22
@@ -43,11 +47,19 @@ def test_ai_settings_env_override(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_ai_packages_not_imported_by_app() -> None:
-    """api·CI 환경 보호: app import만으로 AI 라이브러리가 로드되면 안 된다."""
+    """api·CI 환경 보호: app import만으로 AI 라이브러리가 로드되면 안 된다.
+
+    다른 테스트가 AI 라이브러리를 이미 불러왔을 수 있어 새 프로세스에서 확인한다.
+    """
+    import subprocess
     import sys
 
-    import app.core.celery_app  # noqa: F401
-    import app.main  # noqa: F401
-
-    loaded = {"torch", "basic_pitch", "beat_this", "audio_separator", "librosa", "music21"}
-    assert loaded.isdisjoint(sys.modules)
+    code = (
+        "import sys, app.core.celery_app, app.main;"
+        "ai = {'torch', 'basic_pitch', 'beat_this', 'audio_separator', 'librosa', 'music21'};"
+        "print(sorted(ai & set(sys.modules)))"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", code], capture_output=True, text=True, check=True
+    )
+    assert result.stdout.strip().splitlines()[-1] == "[]"
