@@ -14,6 +14,7 @@ from app.core.config import get_settings
 from app.core.exceptions import BusinessException, ErrorCode
 from app.domains.account import models as account_models
 from app.domains.compare import models as compare_models
+from app.domains.input import models as input_models
 from app.domains.processing import models as processing_models
 from app.domains.processing import sources
 from app.domains.segment.models import Segment
@@ -23,6 +24,7 @@ TABLES = [
     account_models.Workspace.__table__,
     account_models.TesterCode.__table__,
     account_models.WorkspaceSession.__table__,
+    input_models.Track.__table__,
     Segment.__table__,
     processing_models.Stem.__table__,
     processing_models.StemStageResult.__table__,

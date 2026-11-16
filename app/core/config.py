@@ -14,6 +14,9 @@ class Settings(BaseSettings):
     cors_origins: str = "http://localhost:3000"
     cookie_secure: bool = False
 
+    workspace_max_storage_bytes: int = 500 * 1024 * 1024  # 500MB
+    workspace_max_tracks: int = 50
+
     database_url: str = "postgresql+psycopg://capstone:capstone@localhost:5432/capstone"
     redis_url: str = "redis://localhost:6379/0"
 

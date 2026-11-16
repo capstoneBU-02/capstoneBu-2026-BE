@@ -12,6 +12,7 @@ from app.core.storage import ensure_bucket
 from app.domains.account.router import router as account_router
 from app.domains.compare.router import router as compare_router
 from app.domains.health.router import router as health_router
+from app.domains.input.router import router as input_router
 from app.domains.processing.router import router as processing_router
 from app.domains.segment.router import router as segment_router
 
@@ -52,6 +53,7 @@ def create_app() -> FastAPI:
     # 라우터 등록 — 새 도메인은 여기 추가
     app.include_router(health_router, prefix=settings.api_prefix)
     app.include_router(account_router, prefix=settings.api_prefix)
+    app.include_router(input_router, prefix=settings.api_prefix)
     app.include_router(processing_router, prefix=settings.api_prefix)
     app.include_router(compare_router, prefix=settings.api_prefix)
     app.include_router(segment_router, prefix=settings.api_prefix)
