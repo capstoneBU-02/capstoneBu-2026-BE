@@ -15,9 +15,11 @@ from app.core.exceptions import BusinessException, ErrorCode
 from app.domains.compare import models as compare_models
 from app.domains.processing import models as processing_models
 from app.domains.processing import sources
+from app.domains.segment.models import Segment
 
 # FK 순서대로 (부모 먼저)
 TABLES = [
+    Segment.__table__,
     processing_models.Stem.__table__,
     processing_models.StemStageResult.__table__,
     compare_models.Comparison.__table__,
@@ -78,10 +80,15 @@ def db(session_factory: Callable[[], Session]) -> Iterator[Session]:
 
 
 class FakeSegments:
-    """processing.sources.load_segment 대역. 구간 범위를 바꿔 가며 테스트한다."""
+    """구간 대역. DB 테스트면 실제 segments 행을 넣고, 트랙(IN)만 대역으로 바꾼다.
 
-    def __init__(self) -> None:
-        self.segments: dict[int, sources.SegmentSource] = {}
+    같은 segment_id로 다시 add하면 구간 수정처럼 범위를 바꾸고 version을 올린다.
+    트랙은 track_id 단위라, 다른 워크스페이스의 구간을 만들 때는 track_id도 다르게 준다.
+    """
+
+    def __init__(self, session_factory: Callable[[], Session] | None) -> None:
+        self.session_factory = session_factory
+        self.tracks: dict[int, sources.TrackSource] = {}
 
     def add(self, segment_id: int = 1, **kw: object) -> sources.SegmentSource:
         values: dict[str, object] = {
@@ -96,20 +103,50 @@ class FakeSegments:
         }
         values.update(kw)
         src = sources.SegmentSource(**values)  # type: ignore[arg-type]
-        self.segments[segment_id] = src
+        self.tracks[src.track_id] = sources.TrackSource(
+            track_id=src.track_id,
+            workspace_id=src.workspace_id,
+            is_separated_stem=src.is_separated_stem,
+            storage_key=src.track_storage_key,
+            file_hash=src.track_file_hash,
+        )
+        if self.session_factory is not None:
+            with self.session_factory() as db:
+                row = db.get(Segment, segment_id)
+                if row is None:
+                    row = Segment(id=segment_id, version=1)
+                    db.add(row)
+                elif (row.start_ms, row.end_ms) != (src.start_ms, src.end_ms):
+                    row.version += 1  # SEG처럼 범위가 바뀌면 version을 올린다
+                row.track_id = src.track_id
+                row.start_ms, row.end_ms, row.name = src.start_ms, src.end_ms, src.name
+                db.commit()
+                # id를 직접 넣었으므로 시퀀스를 따라 올려 이후 자동 증가 id와 겹치지 않게 한다
+                db.execute(
+                    text(
+                        "SELECT setval(pg_get_serial_sequence('segments', 'id'), "
+                        "(SELECT max(id) FROM segments))"
+                    )
+                )
+                db.commit()
         return src
 
-    def load(self, db: Session, workspace_id: int, segment_id: int) -> sources.SegmentSource:
-        src = self.segments.get(segment_id)
-        if src is None or src.workspace_id != workspace_id:
+    def load_track(self, db: Session, track_id: int) -> sources.TrackSource:
+        track = self.tracks.get(track_id)
+        if track is None:
             raise BusinessException(ErrorCode.SEGMENT_NOT_FOUND)
-        return src
+        return track
 
 
 @pytest.fixture
-def segments(monkeypatch: pytest.MonkeyPatch) -> FakeSegments:
-    fake = FakeSegments()
-    monkeypatch.setattr(sources, "load_segment", fake.load)
+def segments(request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch) -> FakeSegments:
+    factory = (
+        request.getfixturevalue("session_factory")
+        if "session_factory" in request.fixturenames
+        else None
+    )
+    fake = FakeSegments(factory)
+    monkeypatch.setattr(sources, "load_track", fake.load_track)
     return fake
 
 
