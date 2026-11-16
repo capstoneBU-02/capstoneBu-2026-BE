@@ -185,6 +185,11 @@ GPU 태스크는 `@celery_app.task(queue="gpu")`로 지정합니다. 작업 상�
 | `AI_ONSET_THRESHOLD` / `AI_FRAME_THRESHOLD` | `0.5` / `0.3` | Basic Pitch 추론 임계값 |
 | `AI_BEAT_MODEL` | `final0` | Beat This! 체크포인트 |
 | `AI_TAB_WEIGHTS` | `{"span":1.0,"pos":0.1,"move":0.5,"strskip":0.3}` | Viterbi 비용 가중치 (JSON) |
+| `AI_TAB_MAX_FRET` | `22` | 운지 후보의 프렛 상한. 넘는 음은 가장 가까운 위치에 두고 `playable=False` |
+| `AI_TAB_SPAN_LIMIT` / `AI_TAB_SPAN_PENALTY` | `4` / `100` | 프렛 범위가 상한을 넘는 만큼 프렛당 더하는 벌점 |
+| `AI_TAB_MAX_STATES` | `50` | 시점당 남기는 손 모양 후보 수 |
+| `AI_PLAYABLE_MAX_SPAN` | `5` | 한 시점의 프렛 범위가 이 값을 넘으면 `playable=False` (개방현 제외) |
+| `AI_PLAYABLE_MAX_MOVE` | `7` | 16분음표 안에서 손 위치가 이 값 이상 이동하면 `playable=False` |
 | `AI_LOW_CONFIDENCE` | `0.4` | 이 값 미만 음은 `low_confidence`로 표시 (지우지 않음) |
 | `AI_SEPARATION_RMS_DB` | `30` | 기타 스템이 입력보다 이만큼 작으면 분리 실패 |
 | `AI_MODEL_CACHE_DIR` | `/models` | 가중치 캐시 (`model-cache` 볼륨) |
