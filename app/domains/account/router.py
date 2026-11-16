@@ -1,9 +1,11 @@
-from fastapi import APIRouter, Cookie, Depends, Response
+from fastapi import APIRouter, Depends, Response
 from sqlalchemy.orm import Session
 
-from app.core.database import get_db  # 프로젝트 실제 get_db 경로 확인
-from app.core.response import ApiResponse  # 프로젝트 실제 ApiResponse 경로 확인
+from app.core.config import get_settings
+from app.core.database import get_db
+from app.core.response import ApiResponse
 from app.domains.account import service
+from app.domains.account.deps import get_current_workspace
 from app.domains.account.models import Workspace
 from app.domains.account.schemas import (
     TesterLoginRequest,
@@ -14,25 +16,19 @@ from app.domains.account.schemas import (
 router = APIRouter(tags=["account"])
 
 
-def get_current_workspace(
-    ws_token: str | None = Cookie(default=None),
-    db: Session = Depends(get_db),
-) -> Workspace:
-    return service.get_workspace_by_token(db, ws_token)
-
-
 @router.post("/auth/tester-login", response_model=ApiResponse[TesterLoginResponse])
 def tester_login(
     body: TesterLoginRequest,
     response: Response,
     db: Session = Depends(get_db),
 ) -> ApiResponse[TesterLoginResponse]:
+    settings = get_settings()
     data, raw_token = service.login_with_tester_code(db, body.tester_code)
     response.set_cookie(
         key="ws_token",
         value=raw_token,
         httponly=True,
-        secure=False,
+        secure=settings.cookie_secure,
         samesite="lax",
         path="/",
         max_age=60 * 60 * 24 * 14,
@@ -45,7 +41,7 @@ def get_my_workspace(
     workspace: Workspace = Depends(get_current_workspace),
 ) -> ApiResponse[WorkspaceMeResponse]:
     data = WorkspaceMeResponse(
-        workspace_id=workspace.workspace_id,
+        workspace_id=workspace.id,
         owner_type=workspace.owner_type,
         session_active=True,
         created_at=workspace.created_at,

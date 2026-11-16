@@ -12,6 +12,7 @@ class Settings(BaseSettings):
     app_debug: bool = True
     api_prefix: str = "/api/v1"
     cors_origins: str = "http://localhost:3000"
+    cookie_secure: bool = False
 
     database_url: str = "postgresql+psycopg://capstone:capstone@localhost:5432/capstone"
     redis_url: str = "redis://localhost:6379/0"

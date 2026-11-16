@@ -38,15 +38,13 @@ def login_with_tester_code(db: Session, raw_code: str) -> tuple[TesterLoginRespo
 
     # 기존 세션 존재 여부로 재접속 판별 (ACC-07)
     prev_stmt = (
-        select(WorkspaceSession)
-        .where(WorkspaceSession.workspace_id == workspace.workspace_id)
-        .limit(1)
+        select(WorkspaceSession).where(WorkspaceSession.workspace_id == workspace.id).limit(1)
     )
     is_reconnected = db.execute(prev_stmt).scalar_one_or_none() is not None
 
     raw_token = secrets.token_urlsafe(32)
     session = WorkspaceSession(
-        workspace_id=workspace.workspace_id,
+        workspace_id=workspace.id,
         session_token_hash=hash_token(raw_token),
         expires_at=now + timedelta(days=14),
     )
@@ -54,7 +52,7 @@ def login_with_tester_code(db: Session, raw_code: str) -> tuple[TesterLoginRespo
     db.commit()
 
     response_data = TesterLoginResponse(
-        workspace_id=workspace.workspace_id,
+        workspace_id=workspace.id,
         owner_type=workspace.owner_type,
         is_reconnected=is_reconnected,
         notice_message="본 코드는 개인 전용 테스터 코드로, 타인과 공유할 수 없습니다.",
