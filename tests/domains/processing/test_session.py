@@ -10,11 +10,14 @@ from app.core.database import get_db
 from app.domains.account.models import TesterCode
 from app.domains.account.service import hash_token
 from app.domains.processing import service
+from app.domains.processing.models import Stem
 from app.main import create_app
 from tests.domains.conftest import EnqueueSpy, FakeSegments
 
 WS = 10
+OTHER_WS = 99
 CODE = "TESTER-SESSION-0001"
+OTHER_CODE = "TESTER-SESSION-0099"
 
 
 @pytest.fixture
@@ -32,9 +35,11 @@ def api(
     app.dependency_overrides[get_db] = _db  # 세션 의존성은 바꾸지 않는다
     monkeypatch.setattr(service, "_default_enqueue", enqueue)
     with session_factory() as db:
-        db.add(TesterCode(code_hash=hash_token(CODE), workspace_id=WS, status="ACTIVE"))
+        for code, ws in ((CODE, WS), (OTHER_CODE, OTHER_WS)):
+            db.add(TesterCode(code_hash=hash_token(code), workspace_id=ws, status="ACTIVE"))
         db.commit()
-    with TestClient(app, raise_server_exceptions=False) as c:
+    # 운영처럼 Secure 쿠키여도 다음 요청에 쿠키가 실리도록 HTTPS 주소로 호출한다
+    with TestClient(app, base_url="https://testserver", raise_server_exceptions=False) as c:
         yield c
 
 
@@ -54,6 +59,26 @@ def test_stem_api_uses_session_workspace(api: TestClient, segments: FakeSegments
 
     other = api.post("/api/v1/segments/8/stems")
     assert other.status_code == 404
+
+
+def test_sessions_are_isolated(
+    api: TestClient, segments: FakeSegments, session_factory: Callable[[], Session]
+) -> None:
+    """다른 코드로 로그인하면 그 워크스페이스로 저장되고, 서로의 결과는 보이지 않는다."""
+    segments.add(segment_id=8, track_id=200, workspace_id=OTHER_WS)
+
+    assert (
+        api.post("/api/v1/auth/tester-login", json={"tester_code": OTHER_CODE}).status_code == 200
+    )
+    created = api.post("/api/v1/segments/8/stems")
+    assert created.status_code == 202
+    stem_id = created.json()["data"]["stem_id"]
+    with session_factory() as db:
+        stem = db.get(Stem, stem_id)
+        assert stem is not None and stem.workspace_id == OTHER_WS
+
+    assert api.post("/api/v1/auth/tester-login", json={"tester_code": CODE}).status_code == 200
+    assert api.get(f"/api/v1/stems/{stem_id}").status_code == 404
 
 
 def test_comparison_api_requires_session(api: TestClient) -> None:
