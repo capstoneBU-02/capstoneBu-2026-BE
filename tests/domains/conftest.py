@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from app.core.base_entity import Base
 from app.core.config import get_settings
 from app.core.exceptions import BusinessException, ErrorCode
+from app.domains.account import models as account_models
 from app.domains.compare import models as compare_models
 from app.domains.processing import models as processing_models
 from app.domains.processing import sources
@@ -19,6 +20,9 @@ from app.domains.segment.models import Segment
 
 # FK 순서대로 (부모 먼저)
 TABLES = [
+    account_models.Workspace.__table__,
+    account_models.TesterCode.__table__,
+    account_models.WorkspaceSession.__table__,
     Segment.__table__,
     processing_models.Stem.__table__,
     processing_models.StemStageResult.__table__,
