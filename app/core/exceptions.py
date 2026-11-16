@@ -99,6 +99,18 @@ class ErrorCode(Enum):
         "JOB_ENQUEUE_FAILED",
         "작업을 등록하지 못했습니다. 잠시 후 다시 시도해 주세요.",
     )
+    # ACC (계정 및 워크스페이스)
+    INVALID_CODE_FORMAT = ("INVALID_CODE_FORMAT", "테스터 코드 형식이 올바르지 않습니다.", 400)
+    TESTER_CODE_NOT_FOUND = (
+        "TESTER_CODE_NOT_FOUND",
+        "유효하지 않거나 폐기된 테스터 코드입니다.",
+        401,
+    )
+    UNAUTHORIZED_SESSION = (
+        "UNAUTHORIZED_SESSION",
+        "워크스페이스 세션이 없거나 만료되었습니다.",
+        401,
+    )
 
     @property
     def status(self) -> int:
