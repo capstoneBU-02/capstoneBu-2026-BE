@@ -1,9 +1,13 @@
+﻿
 from datetime import UTC, datetime
 from unittest.mock import Mock
 
+import pytest
 from fastapi.testclient import TestClient
 
 from app.core.database import get_db
+from app.core.exceptions import BusinessException, ErrorCode
+from app.domains.input.models import Track
 from app.domains.segment import service
 from app.domains.segment.router import (
     VerifiedTrack,
@@ -37,7 +41,7 @@ def test_create_segment_requires_authentication() -> None:
 
     assert response.status_code == 401
     assert response.json()["success"] is False
-    assert response.json()["error"]["code"] == "UNAUTHORIZED"
+    assert response.json()["error"]["code"] == "UNAUTHORIZED_SESSION"
 
 
 def test_create_segment_returns_201(monkeypatch) -> None:
@@ -88,7 +92,6 @@ def test_create_segment_returns_201(monkeypatch) -> None:
 def test_create_segment_rejects_range_exceeding_track_duration(
     monkeypatch,
 ) -> None:
-
     app = create_app()
     fake_db = Mock()
 
@@ -140,3 +143,61 @@ def test_create_segment_rejects_start_greater_than_or_equal_to_end() -> None:
                 assert response.json()["error"]["code"] == "INVALID_SEGMENT_RANGE"
     finally:
         app.dependency_overrides.clear()
+
+
+def test_verified_track_accepts_own_workspace() -> None:
+    db = Mock()
+    workspace = Mock()
+    workspace.id = 10
+
+    track = Mock()
+    track.id = 1
+    track.workspace_id = 10
+    track.duration_ms = 60000
+    db.get.return_value = track
+
+    result = get_verified_track(
+        track_id=1,
+        db=db,
+        workspace=workspace,
+    )
+
+    assert result == VerifiedTrack(track_id=1, duration_ms=60000)
+    db.get.assert_called_once_with(Track, 1)
+
+
+def test_verified_track_rejects_missing_track() -> None:
+    db = Mock()
+    db.get.return_value = None
+
+    workspace = Mock()
+    workspace.id = 10
+
+    with pytest.raises(BusinessException) as exc:
+        get_verified_track(
+            track_id=999,
+            db=db,
+            workspace=workspace,
+        )
+
+    assert exc.value.error_code == ErrorCode.TRACK_NOT_FOUND
+
+
+def test_verified_track_rejects_other_workspace() -> None:
+    db = Mock()
+    workspace = Mock()
+    workspace.id = 10
+
+    track = Mock()
+    track.id = 1
+    track.workspace_id = 20
+    db.get.return_value = track
+
+    with pytest.raises(BusinessException) as exc:
+        get_verified_track(
+            track_id=1,
+            db=db,
+            workspace=workspace,
+        )
+
+    assert exc.value.error_code == ErrorCode.TRACK_NOT_FOUND
