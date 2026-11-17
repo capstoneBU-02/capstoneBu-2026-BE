@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class SegmentCreateRequest(BaseModel):
@@ -8,12 +8,6 @@ class SegmentCreateRequest(BaseModel):
 
     start_ms: int = Field(ge=0, strict=True)
     end_ms: int = Field(ge=0, strict=True)
-
-    @model_validator(mode="after")
-    def validate_range(self) -> "SegmentCreateRequest":
-        if self.start_ms >= self.end_ms:
-            raise ValueError("시작 시간은 종료 시간보다 작아야 합니다.")
-        return self
 
 
 class SegmentResponse(BaseModel):
