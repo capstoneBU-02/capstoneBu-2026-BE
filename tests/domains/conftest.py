@@ -17,6 +17,7 @@ from app.domains.compare import models as compare_models
 from app.domains.processing import models as processing_models
 from app.domains.processing import sources
 from app.domains.segment.models import Segment
+from app.domains.tab import models as tab_models
 
 # FK 순서대로 (부모 먼저)
 TABLES = [
@@ -29,6 +30,8 @@ TABLES = [
     compare_models.Comparison.__table__,
     compare_models.ComparisonStageResult.__table__,
     compare_models.ComparisonRegion.__table__,
+    tab_models.Tab.__table__,
+    tab_models.TabStageResult.__table__,
 ]
 
 
