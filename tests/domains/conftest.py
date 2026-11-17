@@ -15,6 +15,7 @@ from app.core.exceptions import BusinessException, ErrorCode
 from app.domains.account import models as account_models
 from app.domains.compare import models as compare_models
 from app.domains.input import models as input_models
+from app.domains.input.models import Track
 from app.domains.processing import models as processing_models
 from app.domains.processing import sources
 from app.domains.segment.models import Segment
@@ -100,7 +101,7 @@ def db(session_factory: Callable[[], Session]) -> Iterator[Session]:
 
 
 class FakeSegments:
-    """구간 대역. DB 테스트면 실제 segments 행을 넣고, 트랙(IN)만 대역으로 바꾼다.
+    """구간 대역. DB 테스트면 실제 tracks·segments 행을 넣는다 (DB 없는 테스트만 트랙 조회 대역).
 
     같은 segment_id로 다시 add하면 구간 수정처럼 범위를 바꾸고 version을 올린다.
     트랙은 track_id 단위라, 다른 워크스페이스의 구간을 만들 때는 track_id도 다르게 준다.
@@ -132,6 +133,14 @@ class FakeSegments:
         )
         if self.session_factory is not None:
             with self.session_factory() as db:
+                track = db.get(Track, src.track_id) or Track(id=src.track_id)
+                track.workspace_id = src.workspace_id
+                track.filename, track.media_type = "original.mp3", "audio/mpeg"
+                track.storage_key, track.file_hash = src.track_storage_key, src.track_file_hash
+                track.duration_ms, track.file_size_bytes = 300_000, 1
+                track.is_separated_stem = src.is_separated_stem
+                db.merge(track)
+                db.flush()
                 row = db.get(Segment, segment_id)
                 if row is None:
                     row = Segment(id=segment_id, version=1)
@@ -142,12 +151,13 @@ class FakeSegments:
                 row.start_ms, row.end_ms, row.name = src.start_ms, src.end_ms, src.name
                 db.commit()
                 # id를 직접 넣었으므로 시퀀스를 따라 올려 이후 자동 증가 id와 겹치지 않게 한다
-                db.execute(
-                    text(
-                        "SELECT setval(pg_get_serial_sequence('segments', 'id'), "
-                        "(SELECT max(id) FROM segments))"
+                for table in ("tracks", "segments"):
+                    db.execute(
+                        text(
+                            f"SELECT setval(pg_get_serial_sequence('{table}', 'id'), "
+                            f"(SELECT max(id) FROM {table}))"
+                        )
                     )
-                )
                 db.commit()
         return src
 
@@ -166,7 +176,8 @@ def segments(request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch) ->
         else None
     )
     fake = FakeSegments(factory)
-    monkeypatch.setattr(sources, "load_track", fake.load_track)
+    if factory is None:  # DB 테스트는 실제 tracks 조회 경로를 쓴다
+        monkeypatch.setattr(sources, "load_track", fake.load_track)
     return fake
 
 

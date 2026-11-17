@@ -14,6 +14,7 @@ from app.domains.compare.models import (
     ComparisonStage,
     ComparisonStatus,
 )
+from app.domains.processing import sources as stem_sources
 from app.domains.processing.models import Stem, StemStatus
 from tests.domains.compare.conftest import WS, FakePerformances, FakeStorage
 from tests.domains.conftest import EnqueueSpy, FakeSegments
@@ -225,7 +226,7 @@ def test_playback_tracks_and_partial(
     ready: Stem,
     enqueue: EnqueueSpy,
     fake_storage: FakeStorage,
-    segments: FakeSegments,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     c = _request(db, enqueue)
     _done(db, c, fake_storage)
@@ -236,7 +237,11 @@ def test_playback_tracks_and_partial(
     assert by_type["original"].offset_ms == 1000  # 원곡 파일 안의 구간 시작 위치
     assert by_type["stem"].url and by_type["performance"].url
 
-    segments.tracks.clear()  # 원곡을 찾을 수 없으면 그 항목만 비활성
+    def _missing(db: Session, track_id: int) -> str:
+        raise BusinessException(ErrorCode.SEGMENT_NOT_FOUND)
+
+    # 원곡을 찾을 수 없으면 그 항목만 비활성 (tracks FK가 있어 행 삭제 대신 조회 실패로 흉내)
+    monkeypatch.setattr(stem_sources, "load_track_storage_key", _missing)
     res = service.get_playback(db, WS, c.id)
     by_type = {t.type: t for t in res.tracks}
     assert res.is_partial and not by_type["original"].available
