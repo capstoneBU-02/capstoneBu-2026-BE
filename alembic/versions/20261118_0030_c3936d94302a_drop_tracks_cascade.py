@@ -1,7 +1,7 @@
 """drop tracks cascade
 
 Revision ID: c3936d94302a
-Revises: 90b30405b3f2
+Revises: 0d45889dfccb
 Create Date: 2026-11-18 00:30:35.776687
 
 """
@@ -11,7 +11,7 @@ from collections.abc import Sequence
 from alembic import op
 
 revision: str = "c3936d94302a"
-down_revision: str | None = "90b30405b3f2"
+down_revision: str | None = "0d45889dfccb"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

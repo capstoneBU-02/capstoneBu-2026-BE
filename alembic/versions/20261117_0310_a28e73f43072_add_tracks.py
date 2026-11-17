@@ -47,6 +47,7 @@ def upgrade() -> None:
             ["workspace_id"],
             ["workspaces.id"],
             name=op.f("fk_tracks_workspace_id_workspaces"),
+            ondelete="CASCADE",
         ),
         sa.PrimaryKeyConstraint("id", name=op.f("pk_tracks")),
     )
