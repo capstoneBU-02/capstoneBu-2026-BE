@@ -78,6 +78,15 @@ class ErrorCode(Enum):
     PERFORMANCE_INVALID_AUDIO = (400, "PERFORMANCE_INVALID_AUDIO", "연주 음원을 읽을 수 없습니다.")
     STEM_MISSING = (404, "STEM_MISSING", "기준 기타 음원을 찾을 수 없습니다.")
 
+    # Tab (TAB)
+    TAB_NOT_FOUND = (404, "TAB_NOT_FOUND", "타브를 찾을 수 없습니다.")
+    TAB_IN_PROGRESS = (409, "TAB_IN_PROGRESS", "같은 조건의 타브를 이미 만들고 있습니다.")
+    TAB_NOT_READY = (409, "TAB_NOT_READY", "타브가 아직 준비되지 않았습니다.")
+    TAB_NOT_RETRYABLE = (409, "TAB_NOT_RETRYABLE", "다시 시도할 수 없는 작업입니다.")
+    # 타브 작업 실패 코드 (HTTP 응답이 아니라 failure.error_code로만 나간다)
+    RHYTHM_FAILED = (422, "RHYTHM_FAILED", "박자를 찾지 못했습니다.")
+    TAB_BUILD_FAILED = (500, "TAB_BUILD_FAILED", "타브를 만들지 못했습니다.")
+
     # AI 파이프라인
     PREPROCESS_INVALID_AUDIO = (400, "PREPROCESS_INVALID_AUDIO", "오디오 파일을 읽을 수 없습니다.")
     SEPARATION_NO_GUITAR = (422, "SEPARATION_NO_GUITAR", "음원에서 기타 소리를 찾지 못했습니다.")
