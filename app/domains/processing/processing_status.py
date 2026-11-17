@@ -7,8 +7,9 @@
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.exceptions import BusinessException
 from app.domains.processing import service, sources
-from app.domains.processing.models import READY_STATUSES, Stem
+from app.domains.processing.models import Stem
 from app.domains.processing.schemas import (
     ProcessingStatusResponse,
     StemStatusView,
@@ -16,8 +17,8 @@ from app.domains.processing.schemas import (
 )
 from app.domains.tab.models import Tab, TabStatus
 
-# 타브 재시도 규칙은 TAB 작업이 들어오면 그쪽 판단으로 바꾼다. 지금은 JOB과 같은 횟수 제한만 쓴다
-TAB_MAX_RETRIES = service.MAX_RETRIES
+# 타브 재시도 한도 (D12, JOB과 같은 3번). TAB 작업이 재시도 규칙을 정하면 그쪽 함수로 바꾼다
+TAB_MAX_RETRIES = 3
 
 
 def _latest_tab(db: Session, stem_id: int) -> Tab | None:
@@ -35,7 +36,8 @@ def _stem_view(stem: Stem) -> StemStatusView:
         stem_id=stem.id,
         status=stem.status,
         current_stage=stem.current_stage,
-        playable=stem.status in READY_STATUSES and stem.storage_key is not None,
+        playable=service.is_playable(stem),
+        retryable=service.is_retryable(stem),
     )
 
 
@@ -57,9 +59,13 @@ def get_processing_status(
     """
     seg = sources.load_segment(db, workspace_id, segment_id)
     stem = service.get_current_stem(db, seg.segment_id, seg.start_ms, seg.end_ms)
-    if stem is not None:
-        # 멈춘 작업은 여기서도 실패로 정리한다 (GET /stems/{id}와 같은 판단)
-        stem = service.get_owned_stem(db, workspace_id, stem.id)
+    if stem is not None and service.is_stale(stem):
+        # 멈춘 작업일 때만 잠가서 실패로 정리한다 (GET /stems/{id}와 같은 판단).
+        # 그 사이 삭제됐으면 요청하지 않은 것처럼 null
+        try:
+            stem = service.get_owned_stem(db, workspace_id, stem.id)
+        except BusinessException:
+            stem = None
     tab = _latest_tab(db, stem.id) if stem is not None else None
 
     times = [row.updated_at for row in (stem, tab) if row is not None]

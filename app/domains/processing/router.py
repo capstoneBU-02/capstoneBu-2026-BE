@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.core.response import ApiResponse
-from app.domains.processing import service, status
+from app.domains.processing import processing_status, service
 from app.domains.processing.schemas import (
     CancelResponse,
     ProcessingStatusResponse,
@@ -44,7 +44,7 @@ def get_processing_status(
     workspace_id: int = Depends(get_current_workspace_id),
 ) -> ApiResponse[ProcessingStatusResponse]:
     """구간의 기타 음원·타브 상태를 따로 한 번에 (폴링). 요청하지 않은 작업은 null."""
-    return ApiResponse.ok(status.get_processing_status(db, workspace_id, segment_id))
+    return ApiResponse.ok(processing_status.get_processing_status(db, workspace_id, segment_id))
 
 
 @router.get("/stems/{stem_id}", response_model=ApiResponse[StemResponse])

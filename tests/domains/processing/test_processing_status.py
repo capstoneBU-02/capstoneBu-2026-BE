@@ -9,7 +9,8 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.core.exceptions import BusinessException, ErrorCode
-from app.domains.processing import sources, status
+from app.domains.processing import processing_status as status
+from app.domains.processing import sources
 from app.domains.processing.models import Stem, StemStatus
 from app.domains.tab.models import Tab, TabStatus
 from app.main import create_app
@@ -79,6 +80,7 @@ def test_stem_success_tab_failed_shown_separately(db: Session, segments: FakeSeg
     res = status.get_processing_status(db, WS, 1)
     assert res.stem is not None and res.tab is not None
     assert (res.stem.stem_id, res.stem.status, res.stem.playable) == (stem.id, "success", True)
+    assert res.stem.retryable is False
     assert (res.tab.tab_id, res.tab.status, res.tab.retryable) == (failed.id, "failed", True)
     assert res.updated_at == max(stem.updated_at, failed.updated_at)
 
@@ -111,7 +113,7 @@ def test_stale_stem_is_expired(db: Session, segments: FakeSegments) -> None:
 
     res = status.get_processing_status(db, WS, 1)
     assert res.stem is not None
-    assert (res.stem.status, res.stem.playable) == ("failed", False)
+    assert (res.stem.status, res.stem.playable, res.stem.retryable) == ("failed", False, True)
 
 
 def test_other_workspace_is_404(db: Session, segments: FakeSegments) -> None:

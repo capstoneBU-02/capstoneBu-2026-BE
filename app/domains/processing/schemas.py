@@ -79,6 +79,7 @@ class StemStatusView(BaseModel):
     status: str
     current_stage: str | None
     playable: bool
+    retryable: bool  # 실패했고 다시 시도할 수 있음 (재시도 불가 실패·한도 초과 제외)
 
 
 class TabStatusView(BaseModel):
