@@ -11,7 +11,7 @@ class Track(Base, TimestampMixin):
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     workspace_id: Mapped[int] = mapped_column(
-        BigInteger, ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False, index=True
+        BigInteger, ForeignKey("workspaces.id"), nullable=False, index=True
     )
     filename: Mapped[str] = mapped_column(String(255), nullable=False)
     media_type: Mapped[str] = mapped_column(String(100), nullable=False)
