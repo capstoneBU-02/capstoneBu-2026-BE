@@ -39,10 +39,17 @@ def _check_orphans() -> None:
 
 def upgrade() -> None:
     _check_orphans()
+    op.create_index(op.f("ix_comparisons_tab_id"), "comparisons", ["tab_id"], unique=False)
     op.create_foreign_key(
-        op.f("fk_comparisons_tab_id_tabs"), "comparisons", "tabs", ["tab_id"], ["id"]
+        op.f("fk_comparisons_tab_id_tabs"),
+        "comparisons",
+        "tabs",
+        ["tab_id"],
+        ["id"],
+        ondelete="SET NULL",
     )
 
 
 def downgrade() -> None:
     op.drop_constraint(op.f("fk_comparisons_tab_id_tabs"), "comparisons", type_="foreignkey")
+    op.drop_index(op.f("ix_comparisons_tab_id"), table_name="comparisons")

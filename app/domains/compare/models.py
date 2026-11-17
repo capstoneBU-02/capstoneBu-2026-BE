@@ -84,9 +84,11 @@ class Comparison(Base, TimestampMixin, SoftDeleteMixin):
     performance_id: Mapped[int] = mapped_column(BigInteger, index=True)
     segment_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("segments.id"), index=True)
     stem_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("stems.id"), index=True)
+    # 요청 당시 기준 타브 (기록용, 없으면 null). 결과·재생 응답은 볼 때마다 최신 완료 타브를 찾는다.
+    # 표시용이라 타브 행이 지워지면 null로 둔다
     tab_id: Mapped[int | None] = mapped_column(
-        BigInteger, ForeignKey("tabs.id")
-    )  # 기준 타브 (없으면 null)
+        BigInteger, ForeignKey("tabs.id", ondelete="SET NULL"), index=True
+    )
     start_ms: Mapped[int]  # 비교한 구간 범위 (연주 당시 = 기준 음원 범위)
     end_ms: Mapped[int]
     status: Mapped[str] = mapped_column(String(20), default=ComparisonStatus.QUEUED)
