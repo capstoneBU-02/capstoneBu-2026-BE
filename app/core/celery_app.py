@@ -33,6 +33,21 @@ celery_app.conf.update(
     # 큐: cpu(기본) / gpu(기타 분리). 태스크는 @celery_app.task(queue="gpu")로 지정
     # PoC 초기에는 worker 하나가 두 큐를 함께 처리한다 (docker-compose.yml)
     task_default_queue="cpu",
+    # 작업 상태는 DB(stems·comparisons)에 저장하고 Celery 결과는 읽지 않는다.
+    # 결과를 저장하면 등록할 때마다 결과 저장소(Redis)에 구독해서, Redis가 끊기면 1분 넘게 멈춘다.
+    task_ignore_result=True,
+    # 브로커 연결·등록 재시도를 짧게 제한한다 (Redis 장애 시 요청이 오래 멈추지 않게)
+    broker_connection_timeout=settings.celery_connect_timeout_sec,
+    broker_transport_options={
+        "socket_connect_timeout": settings.celery_connect_timeout_sec,
+        "socket_timeout": settings.celery_connect_timeout_sec,
+    },
+    task_publish_retry_policy={
+        "max_retries": settings.celery_publish_max_retries,
+        "interval_start": 0,
+        "interval_step": 0.5,
+        "interval_max": 1,
+    },
 )
 
 
