@@ -21,6 +21,10 @@ class Settings(BaseSettings):
 
     database_url: str = "postgresql+psycopg://capstone:capstone@localhost:5432/capstone"
     redis_url: str = "redis://localhost:6379/0"
+    # 작업 등록 시 Redis 연결 제한. 끊겨 있으면 약 (재시도 + 1) × 연결 제한 초 안에
+    # 503 JOB_ENQUEUE_FAILED로 끝낸다 (기본값 약 10초, 연결 거부면 더 빠름)
+    celery_connect_timeout_sec: float = 3.0
+    celery_publish_max_retries: int = 2
 
     s3_endpoint_url: str = "http://localhost:8333"
     s3_public_endpoint_url: str = "http://localhost:8333"
