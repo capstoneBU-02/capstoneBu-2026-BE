@@ -113,3 +113,30 @@ def test_create_segment_rejects_range_exceeding_track_duration(
         assert response.json()["error"]["code"] == "INVALID_SEGMENT_RANGE"
     finally:
         app.dependency_overrides.clear()
+
+
+def test_create_segment_rejects_start_greater_than_or_equal_to_end() -> None:
+    app = create_app()
+    fake_db = Mock()
+
+    app.dependency_overrides[get_db] = lambda: fake_db
+    app.dependency_overrides[get_verified_track] = lambda: VerifiedTrack(
+        track_id=1,
+        duration_ms=60000,
+    )
+
+    try:
+        with TestClient(app) as client:
+            for start_ms, end_ms in [(5000, 5000), (7000, 3000)]:
+                response = client.post(
+                    "/api/v1/tracks/1/segments",
+                    json={
+                        "start_ms": start_ms,
+                        "end_ms": end_ms,
+                    },
+                )
+
+                assert response.status_code == 400
+                assert response.json()["error"]["code"] == "INVALID_SEGMENT_RANGE"
+    finally:
+        app.dependency_overrides.clear()

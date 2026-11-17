@@ -346,6 +346,20 @@ def test_load_segment_unknown_or_other_workspace_is_404(
     assert e.value.error_code is ErrorCode.SEGMENT_NOT_FOUND
 
 
+def test_load_track_reads_tracks_table(db: Session, segments: FakeSegments) -> None:
+    """트랙은 tracks에서 최신 값으로 읽고, 없으면 TRACK_NOT_FOUND."""
+    from app.domains.processing import sources
+
+    with pytest.raises(BusinessException) as e:
+        sources.load_track(db, 999)
+    assert e.value.error_code is ErrorCode.TRACK_NOT_FOUND
+
+    segments.add(segment_id=1, track_storage_key="10/100/a.mp3")
+    assert sources.load_track(db, 100).storage_key == "10/100/a.mp3"
+    segments.add(segment_id=1, track_storage_key="10/100/b.mp3")  # 다른 세션에서 바뀜
+    assert sources.load_track(db, 100).storage_key == "10/100/b.mp3"
+
+
 def test_stem_requires_existing_segment(db: Session) -> None:
     """stems.segment_id는 segments FK라 없는 구간으로는 만들 수 없다."""
     from sqlalchemy.exc import IntegrityError
