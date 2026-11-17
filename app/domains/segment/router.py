@@ -6,6 +6,9 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.core.exceptions import BusinessException, ErrorCode
 from app.core.response import ApiResponse
+from app.domains.account.deps import get_current_workspace
+from app.domains.account.models import Workspace
+from app.domains.input.models import Track
 from app.domains.segment import service
 from app.domains.segment.schemas import (
     SegmentCreateRequest,
@@ -23,16 +26,22 @@ class VerifiedTrack:
     duration_ms: int
 
 
-def get_verified_track(track_id: int) -> VerifiedTrack:
-    """IN·ACC 연동 전까지 인증되지 않은 요청을 차단한다.
+def get_verified_track(
+    track_id: int,
+    db: Session = Depends(get_db),
+    workspace: Workspace = Depends(get_current_workspace),
+) -> VerifiedTrack:
+    """로그인한 워크스페이스의 트랙인지 검증한다."""
 
-    TODO(IN·ACC):
-    1. ws_token 쿠키 인증
-    2. 트랙 존재 여부 확인
-    3. 워크스페이스 접근 권한 확인
-    4. 원곡 길이를 밀리초 단위로 반환
-    """
-    raise BusinessException(ErrorCode.UNAUTHORIZED)
+    track = db.get(Track, track_id)
+
+    if track is None or track.workspace_id != workspace.id:
+        raise BusinessException(ErrorCode.TRACK_NOT_FOUND)
+
+    return VerifiedTrack(
+        track_id=track.id,
+        duration_ms=track.duration_ms,
+    )
 
 
 @router.post(
