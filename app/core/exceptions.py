@@ -134,11 +134,10 @@ class ErrorCode(Enum):
         "워크스페이스 저장 한도를 초과했습니다.",
     )
 
-    # Tab (TAB)
-    UNSUPPORTED_CONDITION = (
-        422,
-        "UNSUPPORTED_CONDITION",
-        "지원하지 않는 연주 조건(priority, tuning_id, capo)입니다.",
+    FILE_TOO_LARGE = (
+        413,
+        "FILE_TOO_LARGE",
+        "파일 크기가 최대 허용 용량을 초과했습니다.",
     )
 
     @property

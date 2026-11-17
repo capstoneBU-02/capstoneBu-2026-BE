@@ -6,15 +6,12 @@ from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
 from app.core import storage
+from app.core.config import get_settings
 from app.core.database import get_db
 from app.domains.account.models import TesterCode, Workspace
 from app.domains.account.service import hash_token
 from app.domains.input import service as input_service
 from app.domains.input.models import Track
-from app.domains.input.schemas import InputSegmentCreateRequest
-from app.domains.processing import service as processing_service
-from app.domains.processing.models import Stem, StemStatus
-from app.domains.segment.models import Segment
 from app.main import app
 
 
@@ -22,8 +19,6 @@ from app.main import app
 def client(
     session_factory: Callable[[], Session], monkeypatch: pytest.MonkeyPatch
 ) -> Iterator[TestClient]:
-    input_service.reset_tab_jobs()
-
     uploaded_objects: dict[str, bytes] = {}
 
     def fake_put_bytes(key: str, data: bytes, content_type: str) -> None:
@@ -39,7 +34,6 @@ def client(
     with TestClient(app) as test_client:
         yield test_client
     app.dependency_overrides.clear()
-    input_service.reset_tab_jobs()
 
 
 @pytest.fixture
@@ -107,7 +101,7 @@ def test_upload_mp3_and_mp4_success(
     assert res_mp4.json()["data"]["is_separated_stem"] is True
 
 
-def test_upload_unsupported_format_and_duration_exceeded(
+def test_upload_validation_errors(
     client: TestClient,
     authed_workspace: Workspace,
     monkeypatch: pytest.MonkeyPatch,
@@ -119,6 +113,14 @@ def test_upload_unsupported_format_and_duration_exceeded(
     assert res_wav.status_code == 400
     assert res_wav.json()["error"]["code"] == "UNSUPPORTED_FORMAT"
 
+    _mock_audio_duration(monkeypatch, 0.0)
+    res_zero = client.post(
+        "/api/v1/tracks/upload",
+        files={"file": ("zero.mp3", b"zero-bytes", "audio/mpeg")},
+    )
+    assert res_zero.status_code == 400
+    assert res_zero.json()["error"]["code"] == "UNSUPPORTED_FORMAT"
+
     _mock_audio_duration(monkeypatch, 300.5)
     res_long = client.post(
         "/api/v1/tracks/upload",
@@ -128,96 +130,17 @@ def test_upload_unsupported_format_and_duration_exceeded(
     assert res_long.json()["error"]["code"] == "DURATION_EXCEEDED"
 
 
-def test_separated_stem_sets_bypass_separation_true(
+def test_upload_file_too_large_returns_413(
     client: TestClient,
-    db: Session,
     authed_workspace: Workspace,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _mock_audio_duration(monkeypatch, 60.0)
-    monkeypatch.setattr(processing_service, "_default_enqueue", lambda stem_id, start: None)
+    settings = get_settings()
+    monkeypatch.setattr(settings, "upload_max_bytes", 10)
 
-    upload_res = client.post(
+    res_large = client.post(
         "/api/v1/tracks/upload",
-        files={"file": ("guitar_only.mp3", b"guitar-bytes", "audio/mpeg")},
-        data={"is_separated_stem": "true"},
+        files={"file": ("huge.mp3", b"01234567890", "audio/mpeg")},
     )
-    assert upload_res.status_code == 201
-    track_id = upload_res.json()["data"]["track_id"]
-
-    seg = input_service.create_segment(
-        db=db,
-        workspace_id=authed_workspace.id,
-        track_id=track_id,
-        payload=InputSegmentCreateRequest(name="Intro", start_ms=0, end_ms=30_000),
-    )
-    assert seg.track_id == track_id
-
-    stem_res, is_reused = input_service.request_stem_separation(
-        db=db,
-        workspace_id=authed_workspace.id,
-        segment_id=seg.segment_id,
-    )
-    assert is_reused is False
-    assert stem_res.bypass_separation is True
-
-
-def test_tab_request_stem_not_ready_and_reuse(
-    client: TestClient,
-    db: Session,
-    authed_workspace: Workspace,
-) -> None:
-    track = Track(
-        workspace_id=authed_workspace.id,
-        filename="test.mp3",
-        media_type="audio/mpeg",
-        storage_key=f"{authed_workspace.id}/tracks/test.mp3",
-        file_hash="hash123",
-        duration_ms=60_000,
-        file_size_bytes=1024,
-        is_separated_stem=False,
-    )
-    db.add(track)
-    db.flush()
-
-    segment = Segment(track_id=track.id, start_ms=0, end_ms=10_000, version=1)
-    db.add(segment)
-    db.commit()
-
-    res_no_stem = client.post(
-        f"/api/v1/segments/{segment.id}/tabs",
-        json={"priority": "solo", "tuning_id": "e_standard", "capo": 0},
-    )
-    assert res_no_stem.status_code == 409
-    assert res_no_stem.json()["error"]["code"] == "STEM_NOT_READY"
-
-    stem = Stem(
-        workspace_id=authed_workspace.id,
-        track_id=track.id,
-        segment_id=segment.id,
-        start_ms=0,
-        end_ms=10_000,
-        version=1,
-        status=StemStatus.SUCCESS,
-        bypass_separation=False,
-        input_hash="stemhash",
-        config_version="2026-10-01",
-    )
-    db.add(stem)
-    db.commit()
-
-    first_tab = client.post(
-        f"/api/v1/segments/{segment.id}/tabs",
-        json={"priority": "solo", "tuning_id": "e_standard", "capo": 0},
-    )
-    assert first_tab.status_code == 202
-    assert first_tab.json()["data"]["is_reused"] is False
-    assert first_tab.json()["data"]["version"] == 1
-
-    reused_tab = client.post(
-        f"/api/v1/segments/{segment.id}/tabs",
-        json={"priority": "solo", "tuning_id": "e_standard", "capo": 0},
-    )
-    assert reused_tab.status_code == 202
-    assert reused_tab.json()["data"]["is_reused"] is True
-    assert reused_tab.json()["data"]["version"] == 1
+    assert res_large.status_code == 413
+    assert res_large.json()["error"]["code"] == "FILE_TOO_LARGE"

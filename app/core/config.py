@@ -16,6 +16,8 @@ class Settings(BaseSettings):
 
     workspace_max_storage_bytes: int = 500 * 1024 * 1024  # 500MB
     workspace_max_tracks: int = 50
+    upload_max_bytes: int = 50 * 1024 * 1024  # 50MB
+    track_max_duration_ms: int = 300_000  # 5분
 
     database_url: str = "postgresql+psycopg://capstone:capstone@localhost:5432/capstone"
     redis_url: str = "redis://localhost:6379/0"
