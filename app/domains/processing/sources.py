@@ -1,7 +1,6 @@
 """다른 도메인(SEG·IN·ACC)에서 읽어 오는 값.
 
-구간은 SEG의 segments 테이블, 세션은 ACC의 get_current_workspace에서 읽는다.
-트랙(IN)은 아직 없어서 load_track만 임시로 두고, 모델이 들어오면 그 함수 본문만 바꾼다.
+구간은 SEG의 segments, 트랙은 IN의 tracks, 세션은 ACC의 get_current_workspace에서 읽는다.
 """
 
 from dataclasses import dataclass
@@ -13,6 +12,7 @@ from sqlalchemy.orm import Session
 from app.core.exceptions import BusinessException, ErrorCode
 from app.domains.account.deps import get_current_workspace
 from app.domains.account.models import Workspace
+from app.domains.input.models import Track
 from app.domains.segment.models import Segment
 
 
@@ -43,11 +43,17 @@ class SegmentSource:
 
 
 def load_track(db: Session, track_id: int) -> TrackSource:
-    """트랙을 조회한다. 없으면 SEGMENT_NOT_FOUND (구간의 음원이 없는 것과 같다).
-
-    TODO(IN): tracks 모델이 머지되면 조회로 교체 (이슈 #19).
-    """
-    raise BusinessException(ErrorCode.SEGMENT_NOT_FOUND, "트랙 조회가 아직 연결되지 않았습니다.")
+    """트랙을 조회한다. 없으면 TRACK_NOT_FOUND. 세션에 남은 값이 아니라 DB의 최신 값을 읽는다."""
+    track = db.get(Track, track_id, populate_existing=True)
+    if track is None:
+        raise BusinessException(ErrorCode.TRACK_NOT_FOUND)
+    return TrackSource(
+        track_id=track.id,
+        workspace_id=track.workspace_id,
+        is_separated_stem=track.is_separated_stem,
+        storage_key=track.storage_key,
+        file_hash=track.file_hash,
+    )
 
 
 def load_segment(
@@ -65,7 +71,10 @@ def load_segment(
     segment = db.scalars(stmt.execution_options(populate_existing=True)).first()
     if segment is None:
         raise BusinessException(ErrorCode.SEGMENT_NOT_FOUND)
-    track = load_track(db, segment.track_id)
+    try:
+        track = load_track(db, segment.track_id)
+    except BusinessException as exc:  # 구간의 음원이 없으면 구간이 없는 것과 같다
+        raise BusinessException(ErrorCode.SEGMENT_NOT_FOUND) from exc
     if track.workspace_id != workspace_id:
         raise BusinessException(ErrorCode.SEGMENT_NOT_FOUND)  # 다른 워크스페이스는 없는 것처럼
     return SegmentSource(
