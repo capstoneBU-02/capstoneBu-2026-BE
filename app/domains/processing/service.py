@@ -283,6 +283,11 @@ def is_retryable(stem: Stem) -> bool:
     )
 
 
+def is_playable(stem: Stem) -> bool:
+    """재생할 수 있는 기타 음원이 있는지 (success·needs_review이고 파일이 저장됨)."""
+    return stem.status in READY_STATUSES and stem.storage_key is not None
+
+
 def to_stem_response(db: Session, stem: Stem) -> StemResponse:
     """GET /stems/{stem_id} 응답으로 변환."""
     latest = _latest_stage_results(db, stem.id)
@@ -313,7 +318,7 @@ def to_stem_response(db: Session, stem: Stem) -> StemResponse:
         status=stem.status,
         current_stage=stem.current_stage,
         bypass_separation=stem.bypass_separation,
-        playable=stem.status in READY_STATUSES and stem.storage_key is not None,
+        playable=is_playable(stem),
         review_reason=stem.review_reason,
         stages=stages,
         failure=failure,
