@@ -61,7 +61,7 @@ class Comparison(Base, TimestampMixin, SoftDeleteMixin):
     """연주 비교 작업과 결과. 결과 본문은 result_key(JSON), 구간은 comparison_regions.
 
     workspace_id·track_id·segment_id는 각각 workspaces·tracks·segments FK.
-    performance_id·tab_id는 REC·TAB 모델이 들어오면 FK로 바꾼다.
+    tab_id는 tabs FK. performance_id는 REC 모델이 들어오면 FK로 바꾼다.
     """
 
     __tablename__ = "comparisons"
@@ -84,7 +84,11 @@ class Comparison(Base, TimestampMixin, SoftDeleteMixin):
     performance_id: Mapped[int] = mapped_column(BigInteger, index=True)
     segment_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("segments.id"), index=True)
     stem_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("stems.id"), index=True)
-    tab_id: Mapped[int | None] = mapped_column(BigInteger)  # 기준 타브 (없으면 null)
+    # 요청 당시 기준 타브 (기록용, 없으면 null). 결과·재생 응답은 볼 때마다 최신 완료 타브를 찾는다.
+    # 표시용이라 타브 행이 지워지면 null로 둔다
+    tab_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("tabs.id", ondelete="SET NULL"), index=True
+    )
     start_ms: Mapped[int]  # 비교한 구간 범위 (연주 당시 = 기준 음원 범위)
     end_ms: Mapped[int]
     status: Mapped[str] = mapped_column(String(20), default=ComparisonStatus.QUEUED)

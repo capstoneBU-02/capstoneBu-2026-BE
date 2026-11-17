@@ -210,7 +210,7 @@ def request_comparison(
         performance_id=perf.performance_id,
         segment_id=perf.segment_id,
         stem_id=stem.id,
-        tab_id=sources.find_latest_tab_id(db, stem.id),
+        tab_id=sources.find_latest_tab_id(db, stem.id),  # 요청 당시 기준 타브 (기록용)
         start_ms=perf.start_ms,
         end_ms=perf.end_ms,
         status=ComparisonStatus.QUEUED,
@@ -347,7 +347,7 @@ def get_result(db: Session, workspace_id: int, comparison_id: int) -> Comparison
         baseline=BaselineView(
             source="separated_input" if stem and stem.bypass_separation else "original_song",
             stem_id=c.stem_id,
-            tab_id=c.tab_id,
+            tab_id=sources.find_latest_tab_id(db, c.stem_id),  # 기준 타브는 볼 때마다 최신으로
             segment=SegmentView(
                 segment_id=c.segment_id,
                 name=_segment_name(db, c),
@@ -412,7 +412,7 @@ def get_playback(db: Session, workspace_id: int, comparison_id: int) -> Playback
         comparison_id=c.id,
         is_partial=not all(t.available for t in tracks),
         tracks=tracks,
-        tab_id=c.tab_id,
+        tab_id=sources.find_latest_tab_id(db, c.stem_id),
         expires_at=expires,
     )
 

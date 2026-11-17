@@ -30,11 +30,11 @@ TABLES = [
     Segment.__table__,
     processing_models.Stem.__table__,
     processing_models.StemStageResult.__table__,
+    tab_models.Tab.__table__,
+    tab_models.TabStageResult.__table__,
     compare_models.Comparison.__table__,
     compare_models.ComparisonStageResult.__table__,
     compare_models.ComparisonRegion.__table__,
-    tab_models.Tab.__table__,
-    tab_models.TabStageResult.__table__,
 ]
 
 
