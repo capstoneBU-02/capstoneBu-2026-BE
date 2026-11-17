@@ -120,6 +120,26 @@ class ErrorCode(Enum):
         "UNAUTHORIZED_SESSION",
         "워크스페이스 세션이 없거나 만료되었습니다.",
     )
+    # Input (IN)
+    TRACK_NOT_FOUND = (404, "TRACK_NOT_FOUND", "음원을 찾을 수 없습니다.")
+    UNSUPPORTED_FORMAT = (400, "UNSUPPORTED_FORMAT", "MP3 또는 MP4 파일만 업로드할 수 있습니다.")
+    DURATION_EXCEEDED = (
+        400,
+        "DURATION_EXCEEDED",
+        "음원 재생 길이는 최대 5분(300초)까지 지원합니다.",
+    )
+    STORAGE_LIMIT_EXCEEDED = (
+        413,
+        "STORAGE_LIMIT_EXCEEDED",
+        "워크스페이스 저장 한도를 초과했습니다.",
+    )
+
+    # Tab (TAB)
+    UNSUPPORTED_CONDITION = (
+        422,
+        "UNSUPPORTED_CONDITION",
+        "지원하지 않는 연주 조건(priority, tuning_id, capo)입니다.",
+    )
 
     @property
     def status(self) -> int:
