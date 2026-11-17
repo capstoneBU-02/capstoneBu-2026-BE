@@ -392,7 +392,7 @@ def get_playback(db: Session, workspace_id: int, comparison_id: int) -> Playback
 
     try:
         original_key: str | None = stem_sources.load_track_storage_key(db, c.track_id)
-    except BusinessException:  # IN 연결 전이거나 트랙이 없으면 원곡만 비활성
+    except BusinessException:  # 트랙을 읽지 못하면 원곡만 비활성
         original_key = None
     try:
         perf_key: str | None = sources.load_performance(

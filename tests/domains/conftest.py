@@ -124,22 +124,29 @@ class FakeSegments:
         }
         values.update(kw)
         src = sources.SegmentSource(**values)  # type: ignore[arg-type]
-        self.tracks[src.track_id] = sources.TrackSource(
-            track_id=src.track_id,
-            workspace_id=src.workspace_id,
-            is_separated_stem=src.is_separated_stem,
-            storage_key=src.track_storage_key,
-            file_hash=src.track_file_hash,
-        )
-        if self.session_factory is not None:
+        if self.session_factory is None:  # DB 없는 테스트만 트랙 조회 대역을 쓴다
+            self.tracks[src.track_id] = sources.TrackSource(
+                track_id=src.track_id,
+                workspace_id=src.workspace_id,
+                is_separated_stem=src.is_separated_stem,
+                storage_key=src.track_storage_key,
+                file_hash=src.track_file_hash,
+            )
+        else:
             with self.session_factory() as db:
-                track = db.get(Track, src.track_id) or Track(id=src.track_id)
-                track.workspace_id = src.workspace_id
-                track.filename, track.media_type = "original.mp3", "audio/mpeg"
-                track.storage_key, track.file_hash = src.track_storage_key, src.track_file_hash
-                track.duration_ms, track.file_size_bytes = 300_000, 1
-                track.is_separated_stem = src.is_separated_stem
-                db.merge(track)
+                db.merge(
+                    Track(
+                        id=src.track_id,
+                        workspace_id=src.workspace_id,
+                        filename="original.mp3",
+                        media_type="audio/mpeg",
+                        storage_key=src.track_storage_key,
+                        file_hash=src.track_file_hash,
+                        duration_ms=300_000,
+                        file_size_bytes=1,
+                        is_separated_stem=src.is_separated_stem,
+                    )
+                )
                 db.flush()
                 row = db.get(Segment, segment_id)
                 if row is None:
@@ -164,7 +171,7 @@ class FakeSegments:
     def load_track(self, db: Session, track_id: int) -> sources.TrackSource:
         track = self.tracks.get(track_id)
         if track is None:
-            raise BusinessException(ErrorCode.SEGMENT_NOT_FOUND)
+            raise BusinessException(ErrorCode.TRACK_NOT_FOUND)
         return track
 
 

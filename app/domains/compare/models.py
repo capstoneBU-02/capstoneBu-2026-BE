@@ -78,7 +78,9 @@ class Comparison(Base, TimestampMixin, SoftDeleteMixin):
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     workspace_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("workspaces.id"), index=True)
-    track_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("tracks.id"))  # 저장소 key용
+    track_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("tracks.id"), index=True
+    )  # 저장소 key용
     performance_id: Mapped[int] = mapped_column(BigInteger, index=True)
     segment_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("segments.id"), index=True)
     stem_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("stems.id"), index=True)

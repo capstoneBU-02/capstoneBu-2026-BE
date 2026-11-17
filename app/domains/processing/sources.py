@@ -43,10 +43,10 @@ class SegmentSource:
 
 
 def load_track(db: Session, track_id: int) -> TrackSource:
-    """트랙을 조회한다. 없으면 SEGMENT_NOT_FOUND (구간의 음원이 없는 것과 같다)."""
-    track = db.get(Track, track_id)
+    """트랙을 조회한다. 없으면 TRACK_NOT_FOUND. 세션에 남은 값이 아니라 DB의 최신 값을 읽는다."""
+    track = db.get(Track, track_id, populate_existing=True)
     if track is None:
-        raise BusinessException(ErrorCode.SEGMENT_NOT_FOUND)
+        raise BusinessException(ErrorCode.TRACK_NOT_FOUND)
     return TrackSource(
         track_id=track.id,
         workspace_id=track.workspace_id,
@@ -71,7 +71,10 @@ def load_segment(
     segment = db.scalars(stmt.execution_options(populate_existing=True)).first()
     if segment is None:
         raise BusinessException(ErrorCode.SEGMENT_NOT_FOUND)
-    track = load_track(db, segment.track_id)
+    try:
+        track = load_track(db, segment.track_id)
+    except BusinessException as exc:  # 구간의 음원이 없으면 구간이 없는 것과 같다
+        raise BusinessException(ErrorCode.SEGMENT_NOT_FOUND) from exc
     if track.workspace_id != workspace_id:
         raise BusinessException(ErrorCode.SEGMENT_NOT_FOUND)  # 다른 워크스페이스는 없는 것처럼
     return SegmentSource(
