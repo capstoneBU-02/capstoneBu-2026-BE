@@ -70,3 +70,30 @@ class CancelResponse(BaseModel):
 
     stem_id: int
     status: str
+
+
+class StemStatusView(BaseModel):
+    """processing-status의 기타 음원 부분."""
+
+    stem_id: int
+    status: str
+    current_stage: str | None
+    playable: bool
+
+
+class TabStatusView(BaseModel):
+    """processing-status의 타브 부분."""
+
+    tab_id: int
+    status: str
+    current_stage: str | None
+    retryable: bool
+
+
+class ProcessingStatusResponse(BaseModel):
+    """GET /segments/{segment_id}/processing-status 응답. 요청하지 않은 작업은 null."""
+
+    segment_id: int
+    stem: StemStatusView | None
+    tab: TabStatusView | None
+    updated_at: datetime | None  # stem·tab 중 늦은 변경 시각. 둘 다 없으면 null
