@@ -60,8 +60,8 @@ NON_RETRYABLE_CODES = frozenset(
     {ErrorCode.PERFORMANCE_INVALID_AUDIO.code, ErrorCode.STEM_MISSING.code}
 )
 
-# pg_advisory_xact_lock의 첫 번째 키 (processing=1, compare=2)
-_LOCK_CLASS_COMPARISONS = 2
+# pg_advisory_xact_lock의 첫 번째 키. 도메인마다 달라야 한다 (processing=1, tab=2, compare=3)
+_LOCK_CLASS_COMPARISONS = 3
 
 Enqueue = Callable[[int, ComparisonStage], None]
 
