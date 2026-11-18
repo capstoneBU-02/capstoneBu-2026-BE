@@ -19,7 +19,7 @@ from app.domains.input import models as input_models
 from app.domains.input.models import Track
 from app.domains.processing import models as processing_models
 from app.domains.processing import sources
-from app.domains.segment.models import Segment
+from app.domains.segment.models import Segment, SegmentHistory
 from app.domains.tab import models as tab_models
 
 # FK 순서대로 (부모 먼저)
@@ -29,6 +29,7 @@ TABLES = [
     account_models.WorkspaceSession.__table__,
     input_models.Track.__table__,
     Segment.__table__,
+    SegmentHistory.__table__,
     processing_models.Stem.__table__,
     processing_models.StemStageResult.__table__,
     tab_models.Tab.__table__,
