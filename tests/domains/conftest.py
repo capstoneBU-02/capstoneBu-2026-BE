@@ -6,7 +6,7 @@ from typing import Any
 import pytest
 from sqlalchemy import Engine, create_engine, text
 from sqlalchemy.engine import URL, make_url
-from sqlalchemy.exc import OperationalError
+from sqlalchemy.exc import OperationalError, ProgrammingError
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.core.base_entity import Base
@@ -63,15 +63,49 @@ def _ensure_database(test_url: URL) -> None:
         admin.dispose()
 
 
+NO_PERMISSION_GUIDE = """
+테스트 DB '{db}'를 만들 권한이 없어 테스트를 멈춥니다. (계정: {user})
+
+테스트는 .env의 DATABASE_URL과 같은 서버에 '<DB이름>_test' DB를 만들어 씁니다.
+아래 중 하나로 해결해 주세요.
+
+  1) 추천: 프로젝트 Docker Postgres 사용 (계정이 관리자라 자동으로 만들어짐)
+       docker compose up -d postgres redis seaweedfs
+       DATABASE_URL=postgresql+psycopg://capstone:capstone@localhost:5432/capstone
+  2) 지금 Postgres의 관리자 계정으로 한 번만 실행
+       psql -U postgres -c "ALTER ROLE {user} CREATEDB;"
+     (또는 CREATE DATABASE {db} OWNER {user};)
+
+팀 공용 서버 DB에서는 테스트를 돌리지 마세요.
+원래 오류: {err}
+"""
+
+
+def _prepare_test_database(test_url: URL) -> None:
+    """테스트 DB를 준비한다. Postgres가 없으면 건너뛰고, 권한이 없으면 해결 방법을 보여 주고 멈춘다.
+
+    권한 오류를 그냥 두면 DB 테스트마다 같은 오류가 나서(100개 이상) 원인을 찾기 어렵다.
+    """
+    try:
+        _ensure_database(test_url)
+    except OperationalError:
+        pytest.skip("Postgres에 연결할 수 없어 DB 테스트를 건너뜁니다")
+    except ProgrammingError as exc:  # 권한 없음 (InsufficientPrivilege 등)
+        first_line = str(exc.orig or exc).splitlines()[0]
+        pytest.exit(
+            NO_PERMISSION_GUIDE.format(
+                db=test_url.database, user=test_url.username, err=first_line
+            ),
+            returncode=1,
+        )
+
+
 @pytest.fixture(scope="session")
 def db_engine() -> Iterator[Engine]:
     """테스트 전용 DB('<이름>_test')에 연결한다. Postgres가 없으면 DB 테스트를 건너뛴다."""
     test_url = _test_database_url()
     assert test_url.database and test_url.database.endswith("_test")
-    try:
-        _ensure_database(test_url)
-    except OperationalError:
-        pytest.skip("Postgres에 연결할 수 없어 DB 테스트를 건너뜁니다")
+    _prepare_test_database(test_url)
     engine = create_engine(test_url, pool_pre_ping=True)
     Base.metadata.drop_all(engine, tables=TABLES)  # 이전 실행의 스키마가 남아 있을 수 있음
     Base.metadata.create_all(engine, tables=TABLES)
