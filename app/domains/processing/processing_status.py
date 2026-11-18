@@ -15,10 +15,8 @@ from app.domains.processing.schemas import (
     StemStatusView,
     TabStatusView,
 )
-from app.domains.tab.models import Tab, TabStatus
-
-# 타브 재시도 한도 (D12, JOB과 같은 3번). TAB 작업이 재시도 규칙을 정하면 그쪽 함수로 바꾼다
-TAB_MAX_RETRIES = 3
+from app.domains.tab import service as tab_service
+from app.domains.tab.models import Tab
 
 
 def _latest_tab(db: Session, stem_id: int) -> Tab | None:
@@ -46,7 +44,7 @@ def _tab_view(tab: Tab) -> TabStatusView:
         tab_id=tab.id,
         status=tab.status,
         current_stage=tab.current_stage,
-        retryable=tab.status == TabStatus.FAILED and tab.retry_count < TAB_MAX_RETRIES,
+        retryable=tab_service.is_retryable(tab),  # GET /tabs/{id}와 같은 판단
     )
 
 
@@ -66,12 +64,23 @@ def get_processing_status(
             stem = service.get_owned_stem(db, workspace_id, stem.id)
         except BusinessException:
             stem = None
-    tab = _latest_tab(db, stem.id) if stem is not None else None
+    # 아래에서 타브를 정리하며 commit하면 stem 객체가 만료되므로 응답 값을 먼저 만든다
+    stem_view = _stem_view(stem) if stem is not None else None
+    stem_updated = stem.updated_at if stem is not None else None
 
-    times = [row.updated_at for row in (stem, tab) if row is not None]
+    tab = _latest_tab(db, stem.id) if stem is not None else None
+    if stem is not None and tab is not None and tab_service.is_stale(tab):
+        # 멈춘 타브도 같은 방식으로 정리한다 (GET /tabs/{id}와 같은 판단).
+        # 그 사이 삭제됐으면 남아 있는 최신 타브를 보여 준다
+        try:
+            tab = tab_service.get_owned_tab(db, workspace_id, tab.id)
+        except BusinessException:
+            tab = _latest_tab(db, stem.id)
+
+    times = [t for t in (stem_updated, tab.updated_at if tab is not None else None) if t]
     return ProcessingStatusResponse(
         segment_id=seg.segment_id,
-        stem=_stem_view(stem) if stem is not None else None,
+        stem=stem_view,
         tab=_tab_view(tab) if tab is not None else None,
         updated_at=max(times) if times else None,
     )

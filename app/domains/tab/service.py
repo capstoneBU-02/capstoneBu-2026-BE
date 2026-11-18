@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 from app.core import storage
 from app.core.config import Settings, get_settings
 from app.core.exceptions import BusinessException, ErrorCode
+from app.core.locks import LockClass
 from app.domains.processing import service as processing_service
 from app.domains.processing import sources
 from app.domains.processing.models import READY_STATUSES as STEM_READY_STATUSES
@@ -64,8 +65,8 @@ STALE_MARGIN_SEC = 60  # processing 상태가 강제 종료 시간보다 이만�
 NON_RETRYABLE_CODES = frozenset({ErrorCode.STEM_MISSING.code})
 DOWNLOAD_FORMATS = ("musicxml",)
 
-# pg_advisory_xact_lock의 첫 번째 키. 도메인마다 다른 값을 쓴다 (processing=1, tab=2)
-_LOCK_CLASS_TABS = 2
+# DB 잠금 첫 번째 키 (app/core/locks.py에서 한곳에서 정함)
+_LOCK_CLASS_TABS = LockClass.TABS
 
 Enqueue = Callable[[int, TabStage], None]
 

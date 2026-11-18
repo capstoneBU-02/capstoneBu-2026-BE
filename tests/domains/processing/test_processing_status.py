@@ -46,7 +46,14 @@ def _stem(
     return stem
 
 
-def _tab(db: Session, stem: Stem, version: int, st: str, retry_count: int = 0) -> Tab:
+def _tab(
+    db: Session,
+    stem: Stem,
+    version: int,
+    st: str,
+    retry_count: int = 0,
+    error_code: str | None = None,
+) -> Tab:
     tab = Tab(
         workspace_id=WS,
         track_id=100,
@@ -56,6 +63,7 @@ def _tab(db: Session, stem: Stem, version: int, st: str, retry_count: int = 0) -
         status=st,
         current_stage="transcription",
         retry_count=retry_count,
+        error_code=error_code,
         input_hash=f"tab-{stem.id}-{version}",
         config_version="test",
     )
@@ -91,6 +99,62 @@ def test_tab_retry_limit(db: Session, segments: FakeSegments) -> None:
     _tab(db, stem, 1, TabStatus.FAILED, retry_count=3)
     res = status.get_processing_status(db, WS, 1)
     assert res.tab is not None and res.tab.retryable is False
+
+
+def test_tab_non_retryable_code(db: Session, segments: FakeSegments) -> None:
+    """TAB의 재시도 불가 실패는 재시도 버튼을 띄우지 않는다 (GET /tabs/{id}와 같은 판단)."""
+    segments.add(segment_id=1)
+    stem = _stem(db)
+    _tab(db, stem, 1, TabStatus.FAILED, error_code=ErrorCode.STEM_MISSING.code)
+    res = status.get_processing_status(db, WS, 1)
+    assert res.tab is not None and res.tab.retryable is False
+
+
+def test_stale_tab_is_expired(db: Session, segments: FakeSegments) -> None:
+    """멈춘 타브도 조회하면서 실패(재시도 가능)로 정리한다."""
+    segments.add(segment_id=1)
+    stem = _stem(db)
+    tab = _tab(db, stem, 1, TabStatus.QUEUED)
+    tab.updated_at = datetime.now(UTC) - timedelta(days=1)
+    db.commit()
+
+    res = status.get_processing_status(db, WS, 1)
+    assert res.tab is not None
+    assert (res.tab.status, res.tab.retryable) == ("failed", True)
+
+
+def test_stale_processing_tab_is_expired(db: Session, segments: FakeSegments) -> None:
+    """처리 중에 멈춘 타브(단계 제한 시간 + 여유 초과)도 실패로 정리한다."""
+    segments.add(segment_id=1)
+    stem = _stem(db)
+    tab = _tab(db, stem, 1, TabStatus.PROCESSING)  # current_stage=transcription
+    tab.updated_at = datetime.now(UTC) - timedelta(days=1)
+    db.commit()
+
+    res = status.get_processing_status(db, WS, 1)
+    assert res.tab is not None and res.tab.status == "failed"
+    assert res.stem is not None and res.stem.status == "success"
+
+
+def test_stale_tab_gone_falls_back_to_previous(
+    db: Session, segments: FakeSegments, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """정리하려던 멈춘 타브가 그 사이 사라지면 남아 있는 최신 타브를 보여 준다."""
+    segments.add(segment_id=1)
+    stem = _stem(db)
+    done = _tab(db, stem, 1, TabStatus.SUCCESS)
+    stale = _tab(db, stem, 2, TabStatus.QUEUED)
+    stale.updated_at = datetime.now(UTC) - timedelta(days=1)
+    db.commit()
+
+    def _gone(db: Session, workspace_id: int, tab_id: int) -> Tab:
+        stale.deleted_at = datetime.now(UTC)
+        db.commit()
+        raise BusinessException(ErrorCode.TAB_NOT_FOUND)
+
+    monkeypatch.setattr(status.tab_service, "get_owned_tab", _gone)
+    res = status.get_processing_status(db, WS, 1)
+    assert res.tab is not None and res.tab.tab_id == done.id
 
 
 def test_stem_of_old_range_is_not_current(db: Session, segments: FakeSegments) -> None:
