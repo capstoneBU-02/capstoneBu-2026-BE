@@ -1,12 +1,13 @@
 """도메인 테스트 공용 픽스처: 테스트 전용 DB, 다른 도메인 대역, 작업 등록 대역."""
 
+import socket
 from collections.abc import Callable, Iterator
 from typing import Any
 
 import pytest
 from sqlalchemy import Engine, create_engine, text
 from sqlalchemy.engine import URL, make_url
-from sqlalchemy.exc import OperationalError, ProgrammingError
+from sqlalchemy.exc import DBAPIError, OperationalError, ProgrammingError
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.core.base_entity import Base
@@ -50,7 +51,37 @@ def _test_database_url() -> URL:
     return url if name.endswith("_test") else url.set(database=f"{name}_test")
 
 
+# Postgres 오류 코드 (SQLSTATE). 접속 단계 오류에는 붙지 않는다
+_DUPLICATE_DATABASE = "42P04"  # 동시에 두 번 만들려다 이미 있음
+_INSUFFICIENT_PRIVILEGE = "42501"  # 권한 없음 (DB·테이블 생성)
+
+
+def _sqlstate(exc: DBAPIError) -> str | None:
+    return getattr(exc.orig, "sqlstate", None)
+
+
+def _first_line(exc: DBAPIError) -> str:
+    lines = str(exc.orig or exc).strip().splitlines()
+    return lines[0] if lines else type(exc.orig or exc).__name__
+
+
+def _server_reachable(test_url: URL, timeout: float = 3.0) -> bool:
+    """Postgres 포트가 열려 있는지. Windows는 닫힌 포트에서 접속 시간 초과까지 오래 기다린다."""
+    if not test_url.host or test_url.host.startswith("/"):  # 유닉스 소켓은 접속해 보며 판단
+        return True
+    try:
+        with socket.create_connection((test_url.host, test_url.port or 5432), timeout=timeout):
+            return True
+    except OSError:
+        return False
+
+
 def _ensure_database(test_url: URL) -> None:
+    """테스트 DB가 없으면 만든다.
+
+    'postgres' DB에 접속하지 못하면(권한 없음 등) 테스트 DB에 바로 접속해 본다.
+    관리자가 미리 만들어 준 테스트 DB만 쓸 수 있는 계정도 테스트를 돌릴 수 있게 한다.
+    """
     admin = create_engine(test_url.set(database="postgres"), isolation_level="AUTOCOMMIT")
     try:
         with admin.connect() as conn:
@@ -59,12 +90,26 @@ def _ensure_database(test_url: URL) -> None:
             ).scalar()
             if not exists:
                 conn.execute(text(f'CREATE DATABASE "{test_url.database}"'))
+        return
+    except ProgrammingError as exc:
+        if _sqlstate(exc) == _DUPLICATE_DATABASE:  # 다른 실행이 먼저 만들었으면 그대로 쓴다
+            return
+        raise
+    except OperationalError:
+        pass
     finally:
         admin.dispose()
 
+    direct = create_engine(test_url)
+    try:
+        with direct.connect():
+            return
+    finally:
+        direct.dispose()
+
 
 NO_PERMISSION_GUIDE = """
-테스트 DB '{db}'를 만들 권한이 없어 테스트를 멈춥니다. (계정: {user})
+테스트 DB '{db}'를 만들거나 그 안에 테이블을 만들 권한이 없어 테스트를 멈춥니다. (계정: {user})
 
 테스트는 .env의 DATABASE_URL과 같은 서버에 '<DB이름>_test' DB를 만들어 씁니다.
 아래 중 하나로 해결해 주세요.
@@ -73,42 +118,56 @@ NO_PERMISSION_GUIDE = """
        docker compose up -d postgres redis seaweedfs
        DATABASE_URL=postgresql+psycopg://capstone:capstone@localhost:5432/capstone
   2) 지금 Postgres의 관리자 계정으로 한 번만 실행
-       psql -U postgres -c "ALTER ROLE {user} CREATEDB;"
-     (또는 CREATE DATABASE {db} OWNER {user};)
+       psql -U postgres -c 'ALTER ROLE "{user}" CREATEDB;'
+     (또는 CREATE DATABASE "{db}" OWNER "{user}"; 로 만들어 주기.
+      이미 다른 계정 소유로 있으면 지우고 다시 만들어 주세요)
 
 팀 공용 서버 DB에서는 테스트를 돌리지 마세요.
 원래 오류: {err}
 """
 
+CONNECT_FAILED_GUIDE = """
+Postgres는 켜져 있지만 접속하지 못해 테스트를 멈춥니다. (계정: {user}, 테스트 DB: {db})
+.env의 DATABASE_URL 계정·비밀번호를 확인해 주세요.
+계정에 DB 생성 권한이 없다면 프로젝트 Docker Postgres를 쓰는 것이 가장 쉽습니다.
+  docker compose up -d postgres redis seaweedfs
+원래 오류: {err}
+"""
 
-def _prepare_test_database(test_url: URL) -> None:
-    """테스트 DB를 준비한다. Postgres가 없으면 건너뛰고, 권한이 없으면 해결 방법을 보여 주고 멈춘다.
 
-    권한 오류를 그냥 두면 DB 테스트마다 같은 오류가 나서(100개 이상) 원인을 찾기 어렵다.
+def _prepare_test_database(test_url: URL) -> Engine:
+    """테스트 DB와 테이블을 준비한다.
+
+    - Postgres 포트가 닫혀 있으면(꺼져 있음) DB 테스트를 건너뛴다.
+    - 켜져 있는데 권한·접속 문제가 있으면 해결 방법을 보여 주고 멈춘다. 그냥 두면 DB 테스트마다
+      같은 오류가 나서(100개 이상) 원인을 찾기 어렵고, 건너뛰면 통과한 것처럼 보인다.
     """
+    if not _server_reachable(test_url):
+        pytest.skip("Postgres에 연결할 수 없어 DB 테스트를 건너뜁니다")
+    fill = {"db": test_url.database, "user": test_url.username}
+    engine: Engine | None = None
     try:
         _ensure_database(test_url)
-    except OperationalError:
-        pytest.skip("Postgres에 연결할 수 없어 DB 테스트를 건너뜁니다")
-    except ProgrammingError as exc:  # 권한 없음 (InsufficientPrivilege 등)
-        first_line = str(exc.orig or exc).splitlines()[0]
-        pytest.exit(
-            NO_PERMISSION_GUIDE.format(
-                db=test_url.database, user=test_url.username, err=first_line
-            ),
-            returncode=1,
-        )
+        engine = create_engine(test_url, pool_pre_ping=True)
+        Base.metadata.drop_all(engine, tables=TABLES)  # 이전 실행의 스키마가 남아 있을 수 있음
+        Base.metadata.create_all(engine, tables=TABLES)
+        return engine
+    except DBAPIError as exc:
+        if engine is not None:
+            engine.dispose()
+        if _sqlstate(exc) == _INSUFFICIENT_PRIVILEGE:
+            pytest.exit(NO_PERMISSION_GUIDE.format(**fill, err=_first_line(exc)), returncode=1)
+        if isinstance(exc, OperationalError):  # 서버는 켜져 있는데 접속 실패
+            pytest.exit(CONNECT_FAILED_GUIDE.format(**fill, err=_first_line(exc)), returncode=1)
+        raise
 
 
 @pytest.fixture(scope="session")
 def db_engine() -> Iterator[Engine]:
-    """테스트 전용 DB('<이름>_test')에 연결한다. Postgres가 없으면 DB 테스트를 건너뛴다."""
+    """테스트 전용 DB('<이름>_test')에 연결한다. Postgres가 꺼져 있으면 DB 테스트를 건너뛴다."""
     test_url = _test_database_url()
     assert test_url.database and test_url.database.endswith("_test")
-    _prepare_test_database(test_url)
-    engine = create_engine(test_url, pool_pre_ping=True)
-    Base.metadata.drop_all(engine, tables=TABLES)  # 이전 실행의 스키마가 남아 있을 수 있음
-    Base.metadata.create_all(engine, tables=TABLES)
+    engine = _prepare_test_database(test_url)
     yield engine
     engine.dispose()
 
