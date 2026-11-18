@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 from app.core import storage
 from app.core.config import Settings, get_settings
 from app.core.exceptions import BusinessException, ErrorCode
+from app.core.locks import LockClass
 from app.domains.compare import sources
 from app.domains.compare.limits import hard_limit_sec
 from app.domains.compare.models import (
@@ -60,8 +61,8 @@ NON_RETRYABLE_CODES = frozenset(
     {ErrorCode.PERFORMANCE_INVALID_AUDIO.code, ErrorCode.STEM_MISSING.code}
 )
 
-# pg_advisory_xact_lock의 첫 번째 키. 도메인마다 달라야 한다 (processing=1, tab=2, compare=3)
-_LOCK_CLASS_COMPARISONS = 3
+# DB 잠금 첫 번째 키 (app/core/locks.py에서 한곳에서 정함)
+_LOCK_CLASS_COMPARISONS = LockClass.COMPARISONS
 
 Enqueue = Callable[[int, ComparisonStage], None]
 

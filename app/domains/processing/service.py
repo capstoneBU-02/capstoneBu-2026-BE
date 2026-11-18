@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import Settings, get_settings
 from app.core.exceptions import BusinessException, ErrorCode
+from app.core.locks import LockClass
 from app.domains.processing import sources
 from app.domains.processing.limits import hard_limit_sec
 from app.domains.processing.models import (
@@ -46,8 +47,8 @@ NON_RETRYABLE_CODES = frozenset(
     {ErrorCode.PREPROCESS_INVALID_AUDIO.code, ErrorCode.SEPARATION_NO_GUITAR.code}
 )
 
-# pg_advisory_xact_lock의 첫 번째 키. 도메인마다 다른 값을 쓴다 (processing=1)
-_LOCK_CLASS_STEMS = 1
+# DB 잠금 첫 번째 키 (app/core/locks.py에서 한곳에서 정함)
+_LOCK_CLASS_STEMS = LockClass.STEMS
 
 Enqueue = Callable[[int, StemStage], None]
 
