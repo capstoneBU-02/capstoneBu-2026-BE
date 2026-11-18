@@ -10,8 +10,15 @@ class SegmentCreateRequest(BaseModel):
     end_ms: int = Field(ge=0, strict=True)
 
 
+class SegmentUpdateRequest(BaseModel):
+    """SEG 구간 수정 요청."""
+
+    start_ms: int = Field(ge=0, strict=True)
+    end_ms: int = Field(ge=0, strict=True)
+
+
 class SegmentResponse(BaseModel):
-    """SEG 구간 생성 응답."""
+    """SEG 구간 생성 및 수정 응답."""
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -23,3 +30,4 @@ class SegmentResponse(BaseModel):
     name: str | None
     version: int
     created_at: datetime
+    updated_at: datetime

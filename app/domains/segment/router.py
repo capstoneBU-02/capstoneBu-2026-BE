@@ -10,9 +10,11 @@ from app.domains.account.deps import get_current_workspace
 from app.domains.account.models import Workspace
 from app.domains.input.models import Track
 from app.domains.segment import service
+from app.domains.segment.models import Segment
 from app.domains.segment.schemas import (
     SegmentCreateRequest,
     SegmentResponse,
+    SegmentUpdateRequest,
 )
 
 router = APIRouter(tags=["segment"])
@@ -61,4 +63,36 @@ def create_segment(
         request=request,
         track_duration_ms=track.duration_ms,
     )
+    return ApiResponse.ok(result)
+
+
+@router.patch(
+    "/segments/{segment_id}",
+    response_model=ApiResponse[SegmentResponse],
+)
+def update_segment(
+    segment_id: int,
+    request: SegmentUpdateRequest,
+    db: Session = Depends(get_db),
+    workspace: Workspace = Depends(get_current_workspace),
+) -> ApiResponse[SegmentResponse]:
+    """로그인한 워크스페이스의 구간 범위를 수정한다."""
+
+    segment = db.get(Segment, segment_id)
+
+    if segment is None:
+        raise BusinessException(ErrorCode.SEGMENT_NOT_FOUND)
+
+    track = db.get(Track, segment.track_id)
+
+    if track is None or track.workspace_id != workspace.id:
+        raise BusinessException(ErrorCode.SEGMENT_NOT_FOUND)
+
+    result = service.update_segment(
+        db=db,
+        segment_id=segment_id,
+        request=request,
+        track_duration_ms=track.duration_ms,
+    )
+
     return ApiResponse.ok(result)

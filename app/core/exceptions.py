@@ -43,6 +43,11 @@ class ErrorCode(Enum):
         "SEGMENT_CREATE_FAILED",
         "구간 생성에 실패했습니다.",
     )
+    SEGMENT_UPDATE_FAILED = (
+        500,
+        "SEGMENT_UPDATE_FAILED",
+        "구간 수정에 실패했습니다.",
+    )
 
     # Processing (JOB)
     STEM_NOT_FOUND = (404, "STEM_NOT_FOUND", "기타 음원을 찾을 수 없습니다.")
@@ -74,6 +79,7 @@ class ErrorCode(Enum):
         "다시 시도할 수 없는 비교입니다.",
     )
     REGION_NOT_FOUND = (404, "REGION_NOT_FOUND", "구간을 찾을 수 없습니다.")
+
     # 비교 작업 실패 코드 (HTTP 응답이 아니라 failure.error_code로만 나간다)
     PERFORMANCE_INVALID_AUDIO = (400, "PERFORMANCE_INVALID_AUDIO", "연주 음원을 읽을 수 없습니다.")
     STEM_MISSING = (404, "STEM_MISSING", "기준 기타 음원을 찾을 수 없습니다.")
@@ -83,6 +89,7 @@ class ErrorCode(Enum):
     TAB_IN_PROGRESS = (409, "TAB_IN_PROGRESS", "같은 조건의 타브를 이미 만들고 있습니다.")
     TAB_NOT_READY = (409, "TAB_NOT_READY", "타브가 아직 준비되지 않았습니다.")
     TAB_NOT_RETRYABLE = (409, "TAB_NOT_RETRYABLE", "다시 시도할 수 없는 작업입니다.")
+
     # 타브 작업 실패 코드 (HTTP 응답이 아니라 failure.error_code로만 나간다)
     RHYTHM_FAILED = (422, "RHYTHM_FAILED", "박자를 찾지 못했습니다.")
     TAB_BUILD_FAILED = (500, "TAB_BUILD_FAILED", "타브를 만들지 못했습니다.")
@@ -114,6 +121,7 @@ class ErrorCode(Enum):
         "JOB_ENQUEUE_FAILED",
         "작업을 등록하지 못했습니다. 잠시 후 다시 시도해 주세요.",
     )
+
     # ACC (계정 및 워크스페이스)
     INVALID_CODE_FORMAT = (400, "INVALID_CODE_FORMAT", "테스터 코드 형식이 올바르지 않습니다.")
     TESTER_CODE_NOT_FOUND = (
@@ -126,6 +134,7 @@ class ErrorCode(Enum):
         "UNAUTHORIZED_SESSION",
         "워크스페이스 세션이 없거나 만료되었습니다.",
     )
+
     # Input (IN)
     TRACK_NOT_FOUND = (404, "TRACK_NOT_FOUND", "음원을 찾을 수 없습니다.")
     UNSUPPORTED_FORMAT = (400, "UNSUPPORTED_FORMAT", "MP3 또는 MP4 파일만 업로드할 수 있습니다.")
@@ -139,7 +148,6 @@ class ErrorCode(Enum):
         "STORAGE_LIMIT_EXCEEDED",
         "워크스페이스 저장 한도를 초과했습니다.",
     )
-
     FILE_TOO_LARGE = (
         413,
         "FILE_TOO_LARGE",

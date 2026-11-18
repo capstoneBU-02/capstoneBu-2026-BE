@@ -1,11 +1,11 @@
-from sqlalchemy import BigInteger, CheckConstraint, Index, String
+from sqlalchemy import BigInteger, CheckConstraint, ForeignKey, Index, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.base_entity import Base, TimestampMixin
 
 
 class Segment(Base, TimestampMixin):
-    """원곡에서 사용자가 선택한 연습 구간."""
+    """원본 음원에서 사용자가 선택한 연습 구간."""
 
     __tablename__ = "segments"
     __table_args__ = (
@@ -20,8 +20,16 @@ class Segment(Base, TimestampMixin):
         Index("ix_segments_track_start", "track_id", "start_ms"),
     )
 
-    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
-    track_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    id: Mapped[int] = mapped_column(
+        BigInteger,
+        primary_key=True,
+        autoincrement=True,
+    )
+    track_id: Mapped[int] = mapped_column(
+        BigInteger,
+        ForeignKey("tracks.id"),
+        nullable=False,
+    )
     start_ms: Mapped[int] = mapped_column(BigInteger, nullable=False)
     end_ms: Mapped[int] = mapped_column(BigInteger, nullable=False)
     name: Mapped[str | None] = mapped_column(String(20), nullable=True)

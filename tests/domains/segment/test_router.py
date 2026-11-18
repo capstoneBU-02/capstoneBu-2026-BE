@@ -62,6 +62,7 @@ def test_create_segment_returns_201(monkeypatch) -> None:
         name=None,
         version=1,
         created_at=datetime(2026, 11, 10, tzinfo=UTC),
+        updated_at=datetime(2026, 11, 10, tzinfo=UTC),
     )
 
     create_mock = Mock(return_value=expected)
@@ -200,3 +201,12 @@ def test_verified_track_rejects_other_workspace() -> None:
         )
 
     assert exc.value.error_code == ErrorCode.TRACK_NOT_FOUND
+
+
+def test_update_segment_route_exists() -> None:
+    routes = [
+        route for route in router.routes if getattr(route, "path", None) == "/segments/{segment_id}"
+    ]
+
+    assert len(routes) == 1
+    assert "PATCH" in routes[0].methods
