@@ -7,6 +7,7 @@ key 규칙(초안): {workspace_id}/{song_id}/...
 
 from functools import lru_cache
 from typing import TYPE_CHECKING
+from urllib.parse import quote
 
 import boto3
 from botocore.client import Config
@@ -85,10 +86,14 @@ def presigned_upload_url(key: str, content_type: str) -> str:
     )
 
 
-def presigned_download_url(key: str) -> str:
+def presigned_download_url(key: str, download_name: str | None = None) -> str:
+    """download_name을 주면 브라우저가 그 이름으로 내려받는다 (attachment)."""
     s = get_settings()
+    params = {"Bucket": s.s3_bucket, "Key": key}
+    if download_name is not None:
+        params["ResponseContentDisposition"] = (
+            f"attachment; filename*=UTF-8''{quote(download_name)}"
+        )
     return _get_public_s3().generate_presigned_url(
-        "get_object",
-        Params={"Bucket": s.s3_bucket, "Key": key},
-        ExpiresIn=s.s3_presigned_expires_seconds,
+        "get_object", Params=params, ExpiresIn=s.s3_presigned_expires_seconds
     )

@@ -75,6 +75,12 @@ class Settings(BaseSettings):
     ai_compare_transcription_timeout_sec: int = 300
     ai_compare_timeout_sec: int = 60
 
+    # 타브(TAB). 제한 시간은 D12 확정 전 초기값
+    ai_tab_transcription_timeout_sec: int = 300
+    ai_rhythm_timeout_sec: int = 120
+    ai_tab_build_timeout_sec: int = 60
+    ai_low_confidence_ratio: float = 0.5  # 이 비율 이상이 low_confidence면 needs_review
+
     @property
     def cors_origin_list(self) -> list[str]:
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]

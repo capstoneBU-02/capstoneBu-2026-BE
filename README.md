@@ -191,6 +191,8 @@ GPU 태스크는 `@celery_app.task(queue="gpu")`로 지정합니다. 작업 상�
 | `AI_PLAYABLE_MAX_SPAN` | `5` | 한 시점의 프렛 범위가 이 값을 넘으면 `playable=False` (개방현 제외) |
 | `AI_PLAYABLE_MAX_MOVE` | `7` | 16분음표 안에서 손 위치가 이 값 이상 이동하면 `playable=False` |
 | `AI_LOW_CONFIDENCE` | `0.4` | 이 값 미만 음은 `low_confidence`로 표시 (지우지 않음) |
+| `AI_LOW_CONFIDENCE_RATIO` | `0.5` | `low_confidence` 음이 이 비율 이상이면 타브를 `needs_review`로 |
+| `AI_TAB_TRANSCRIPTION_TIMEOUT_SEC` / `AI_RHYTHM_TIMEOUT_SEC` / `AI_TAB_BUILD_TIMEOUT_SEC` | `300` / `120` / `60` | 타브 단계별 soft 제한 시간 |
 | `AI_MIN_NOTE_LENGTH_MS` | `58` | Basic Pitch 최소 음 길이 |
 | `AI_MIN_FREQUENCY_HZ` / `AI_MAX_FREQUENCY_HZ` | `80` / `1320` | 음 인식 주파수 범위 |
 | `AI_NOTE_MERGE_GAP_MS` | `30` | 같은 음높이가 이 간격 이내로 끊겼다 이어지면 합침 |

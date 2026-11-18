@@ -86,6 +86,12 @@ class ErrorCode(Enum):
     # 타브 작업 실패 코드 (HTTP 응답이 아니라 failure.error_code로만 나간다)
     RHYTHM_FAILED = (422, "RHYTHM_FAILED", "박자를 찾지 못했습니다.")
     TAB_BUILD_FAILED = (500, "TAB_BUILD_FAILED", "타브를 만들지 못했습니다.")
+    UNSUPPORTED_CONDITION = (422, "UNSUPPORTED_CONDITION", "지원하지 않는 연주 조건입니다.")
+    UNSUPPORTED_DOWNLOAD_FORMAT = (
+        422,
+        "UNSUPPORTED_DOWNLOAD_FORMAT",
+        "지원하지 않는 다운로드 형식입니다.",
+    )
 
     # AI 파이프라인
     PREPROCESS_INVALID_AUDIO = (400, "PREPROCESS_INVALID_AUDIO", "오디오 파일을 읽을 수 없습니다.")

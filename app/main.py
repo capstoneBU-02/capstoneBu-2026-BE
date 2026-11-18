@@ -15,6 +15,7 @@ from app.domains.health.router import router as health_router
 from app.domains.input.router import router as input_router
 from app.domains.processing.router import router as processing_router
 from app.domains.segment.router import router as segment_router
+from app.domains.tab.router import router as tab_router
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s - %(message)s")
 logger = logging.getLogger(__name__)
@@ -57,6 +58,7 @@ def create_app() -> FastAPI:
     app.include_router(processing_router, prefix=settings.api_prefix)
     app.include_router(compare_router, prefix=settings.api_prefix)
     app.include_router(segment_router, prefix=settings.api_prefix)
+    app.include_router(tab_router, prefix=settings.api_prefix)
 
     return app
 
