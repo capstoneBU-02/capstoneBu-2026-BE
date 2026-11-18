@@ -86,6 +86,15 @@ docker compose exec api alembic revision --autogenerate -m "add songs"
 docker compose exec api alembic upgrade head
 ```
 
+### 로컬 테스트 DB
+
+`uv run pytest`는 `.env`의 `DATABASE_URL`과 같은 서버에 `<DB이름>_test` DB(예: `capstone_test`)를 만들어 씁니다. 앱 DB의 데이터는 건드리지 않습니다.
+
+- **Docker Postgres를 권장합니다** (`docker compose up -d postgres redis seaweedfs`). `capstone` 계정이 관리자라 테스트 DB가 자동으로 만들어집니다.
+- PC에 직접 설치한 Postgres는 계정에 DB 생성 권한이 없을 수 있습니다. 그러면 해결 방법이 적힌 메시지를 보여 주고 테스트를 멈춥니다. 관리자 계정으로 `ALTER ROLE <계정> CREATEDB;`를 한 번 실행하면 됩니다.
+- Postgres가 꺼져 있으면(포트가 닫혀 있으면) DB 테스트만 건너뜁니다. 켜져 있는데 비밀번호 등으로 접속하지 못하면 건너뛰지 않고 안내와 함께 멈춥니다.
+- **팀 공용 서버 DB를 가리킨 상태로는 테스트를 돌리지 마세요.**
+
 ## 폴더 구조
 
 **도메인(기능)별**로 나눕니다. 공통 코드는 `core/`에만, 기능 코드는 `domains/<기능>/` 안에만 둡니다.
