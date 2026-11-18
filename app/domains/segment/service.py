@@ -96,15 +96,21 @@ def apply_segment_update(
     changed = False
 
     if "start_ms" in fields:
+        start_ms = request.start_ms
+        end_ms = request.end_ms
+
+        if start_ms is None or end_ms is None:
+            raise BusinessException(ErrorCode.INVALID_SEGMENT_RANGE)
+
         validate_segment_range(
-            request.start_ms,
-            request.end_ms,
+            start_ms,
+            end_ms,
             track_duration_ms,
         )
 
-        if segment.start_ms != request.start_ms or segment.end_ms != request.end_ms:
-            segment.start_ms = request.start_ms
-            segment.end_ms = request.end_ms
+        if segment.start_ms != start_ms or segment.end_ms != end_ms:
+            segment.start_ms = start_ms
+            segment.end_ms = end_ms
             segment.version += 1
             changed = True
 
@@ -130,7 +136,6 @@ def update_segment(
         if segment is None:
             raise BusinessException(ErrorCode.SEGMENT_NOT_FOUND)
 
-        # 수정 전 상태를 비교하여 실제 변경 여부를 확인한다.
         old_start_ms = segment.start_ms
         old_end_ms = segment.end_ms
         old_name = segment.name
@@ -138,19 +143,28 @@ def update_segment(
         fields = request.model_fields_set
 
         if "start_ms" in fields:
+            start_ms = request.start_ms
+            end_ms = request.end_ms
+
+            if start_ms is None or end_ms is None:
+                raise BusinessException(ErrorCode.INVALID_SEGMENT_RANGE)
+
             validate_segment_range(
-                request.start_ms,
-                request.end_ms,
+                start_ms,
+                end_ms,
                 track_duration_ms,
             )
 
-        range_changed = "start_ms" in fields and (
-            old_start_ms != request.start_ms or old_end_ms != request.end_ms
-        )
+        range_changed = False
+
+        if "start_ms" in fields:
+            range_changed = old_start_ms != request.start_ms or old_end_ms != request.end_ms
+
         name_changed = "name" in fields and old_name != request.name
 
         if range_changed or name_changed:
             save_segment_history(db, segment)
+
             apply_segment_update(
                 segment,
                 request,
