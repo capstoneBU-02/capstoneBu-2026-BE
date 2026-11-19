@@ -108,17 +108,17 @@ def mix(paths: list[str], out_path: str) -> None:
 
     if not paths:
         raise ValueError("합칠 파일이 없습니다")
-    arrays = []
-    sr = 0
-    for p in paths:
-        data, sr = read_range(p)
-        arrays.append(data)
-    n = min(a.shape[0] for a in arrays)
-    channels = max(a.shape[1] for a in arrays)
+    # 길이·채널은 메타데이터로 먼저 구하고, 파일은 하나씩 읽어 더한다 (메모리에 하나만 둔다)
+    infos = [sf.info(p) for p in paths]
+    n = min(int(i.frames) for i in infos)
+    channels = max(int(i.channels) for i in infos)
+    sr = int(infos[0].samplerate)
     total = np.zeros((n, channels), dtype="float32")
-    for a in arrays:
-        total += a[:n] if a.shape[1] == channels else np.repeat(a[:n, :1], channels, axis=1)
-    sf.write(out_path, np.clip(total, -1.0, 1.0), sr, subtype="PCM_16")
+    for p in paths:
+        a = sf.read(p, frames=n, dtype="float32", always_2d=True)[0]
+        total += a if a.shape[1] == channels else np.repeat(a[:, :1], channels, axis=1)
+    np.clip(total, -1.0, 1.0, out=total)
+    sf.write(out_path, total, sr, subtype="PCM_16")
 
 
 def separate_guitar(
