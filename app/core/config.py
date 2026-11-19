@@ -35,7 +35,7 @@ class Settings(BaseSettings):
     s3_presigned_expires_seconds: int = 900
 
     # AI 파이프라인 (env: AI_*). 모델 이름·임계값은 코드에 하드코딩하지 않고 여기서 읽는다.
-    ai_config_version: str = "2026-10-01"  # 결과 재현용. 모델·임계값을 바꾸면 함께 올린다
+    ai_config_version: str = "2026-11-19"  # 결과 재현용. 모델·임계값을 바꾸면 함께 올린다
     ai_separation_model: str = "BS-Roformer-SW.ckpt"
     ai_separation_fallback: str = "htdemucs_6s"
     ai_transcription_weights: str = "icassp2022-onnx"  # basic-pitch. 미세조정 시 ft-YYYYMMDD

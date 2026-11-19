@@ -56,6 +56,7 @@ class StageOutcome:
     review_reason: str | None = None  # 마지막 단계에서만 의미 있음 (needs_review)
     skipped: bool = False
     input_pad_ms: int | None = None  # preprocess만: 실제로 넣은 앞쪽 여유
+    part_keys: dict[str, str] | None = None  # separate만: 악기별 음원·반주의 저장 위치
 
 
 StageWork = Callable[[Session, Stem, Path], StageOutcome]
@@ -195,6 +196,7 @@ def run_stage(
             locked.input_pad_ms = outcome.input_pad_ms
         if stage == LAST_STAGE:
             locked.storage_key = outcome.output_key
+            locked.part_keys = outcome.part_keys
             locked.review_reason = outcome.review_reason
             locked.status = StemStatus.NEEDS_REVIEW if outcome.review_reason else StemStatus.SUCCESS
         else:
@@ -232,7 +234,10 @@ def preprocess_work(db: Session, stem: Stem, tmp: Path) -> StageOutcome:
 
 
 def separate_work(db: Session, stem: Stem, tmp: Path) -> StageOutcome:
-    """구간 WAV에서 기타를 분리해 구간 길이로 자른 뒤 올린다. 분리 음원이면 자르기만 한다."""
+    """구간 WAV에서 기타를 분리해 구간 길이로 자른 뒤 올린다. 분리 음원이면 자르기만 한다.
+
+    분리하면 기타를 뺀 악기별 음원과 반주도 같은 길이로 잘라 올린다.
+    """
     from app.domains.processing.pipeline import separation
 
     src = tmp / "input.wav"
@@ -245,12 +250,15 @@ def separate_work(db: Session, stem: Stem, tmp: Path) -> StageOutcome:
         else min(settings.ai_preprocess_padding_ms, stem.start_ms)
     )
     duration_ms = stem.end_ms - stem.start_ms
+    parts_dir = tmp / "parts"
+    parts: dict[str, str] = {}
 
     try:
         if stem.bypass_separation:
             separation.trim(str(src), str(out), pad_before_ms, duration_ms)
             model = None
         else:
+            parts_dir.mkdir()
             res = separation.separate_guitar(
                 str(src),
                 str(out),
@@ -260,8 +268,10 @@ def separate_work(db: Session, stem: Stem, tmp: Path) -> StageOutcome:
                 duration_ms=duration_ms,
                 no_guitar_db=settings.ai_separation_rms_db,
                 fallback_model=settings.ai_separation_fallback,
+                parts_dir=str(parts_dir),
             )
             model = res.model
+            parts = res.parts
     except separation.NoGuitarError as e:
         raise StageError(ErrorCode.SEPARATION_NO_GUITAR, str(e)) from e
     except separation.ShortAudioError as e:
@@ -276,8 +286,16 @@ def separate_work(db: Session, stem: Stem, tmp: Path) -> StageOutcome:
     )
     key = keys.guitar_key(stem)
     storage.upload_file(str(out), key, WAV)
+    part_keys: dict[str, str] = {}
+    for part, path in sorted(parts.items()):
+        part_keys[part] = keys.part_key(stem, part)
+        storage.upload_file(path, part_keys[part], WAV)
     return StageOutcome(
-        output_key=key, model=model, review_reason=review, skipped=stem.bypass_separation
+        output_key=key,
+        model=model,
+        review_reason=review,
+        skipped=stem.bypass_separation,
+        part_keys=part_keys or None,
     )
 
 
