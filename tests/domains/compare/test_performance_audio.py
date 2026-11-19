@@ -32,13 +32,13 @@ def make(path: Path, source: str) -> None:
 
 
 @pytest.mark.parametrize("ext", ["webm", "m4a", "mp3", "wav"])
-def test_converts_to_mono_wav(tmp_path: Path, ext: str) -> None:
+def test_converts_to_wav(tmp_path: Path, ext: str) -> None:
     src = tmp_path / f"perf.{ext}"
     make(src, "sine=frequency=330:sample_rate=48000")
     out = tmp_path / "out.wav"
     performance_audio.to_wav(str(src), str(out), sample_rate=44100, silence_dbfs=-50.0)
     info = sf.info(str(out))
-    assert (info.samplerate, info.channels) == (44100, 1)
+    assert (info.samplerate, info.channels) == (44100, 1)  # 채널 수는 원본 그대로
     assert 1.9 < info.duration < 2.1
 
 
@@ -58,3 +58,12 @@ def test_unreadable_file_is_invalid(tmp_path: Path) -> None:
         performance_audio.to_wav(
             str(src), str(tmp_path / "o.wav"), sample_rate=44100, silence_dbfs=-50.0
         )
+
+
+def test_opposite_phase_stereo_is_not_silent(tmp_path: Path) -> None:
+    """좌우가 x와 -x인 스테레오도 소리가 있으므로 통과해야 한다 (모노로 합치면 상쇄됨)."""
+    src = tmp_path / "phase.wav"
+    make(src, "aevalsrc=0.3*sin(2*PI*330*t)|-0.3*sin(2*PI*330*t):s=44100")
+    out = tmp_path / "out.wav"
+    performance_audio.to_wav(str(src), str(out), sample_rate=44100, silence_dbfs=-50.0)
+    assert sf.info(str(out)).channels == 2
