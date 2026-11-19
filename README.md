@@ -116,8 +116,8 @@ capstone-backend/
 │       └── health/          #   예) router.py · schemas.py · models.py · service.py · tasks.py
 ├── tests/                   # app/ 과 같은 구조 (tests/core, tests/domains/<기능>)
 ├── alembic/                 # DB 마이그레이션
-├── scripts/                 # 운영 스크립트 (모델 다운로드 등)
-├── docs/                    # 문서 (모델 라이선스 등)
+├── scripts/                 # 운영 스크립트 (모델 다운로드, 학습·분리 평가)
+├── docs/                    # 문서 (모델 라이선스, 학습·분리 평가 안내)
 ├── docker/                  # 컨테이너 설정 파일
 ├── docker-compose.yml
 ├── Dockerfile
