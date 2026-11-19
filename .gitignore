@@ -27,3 +27,6 @@ checkpoints/
 *.wav
 *.mp3
 *.mp4
+
+# 분리 평가 결과 (scripts/separation/evaluate.py)
+scripts/separation/runs/
