@@ -43,7 +43,7 @@ AI 설정은 `AI_*` 환경 변수로 덮어쓸 수 있고, 없으면 `app/core/c
 ```dotenv
 AI_MODEL_CACHE_DIR=/models
 AI_SEPARATION_MODEL=BS-Roformer-SW.ckpt
-AI_CONFIG_VERSION=2026-10-01
+AI_CONFIG_VERSION=2026-11-19
 ```
 
 ### 4. 전체 실행
@@ -187,7 +187,7 @@ GPU 태스크는 `@celery_app.task(queue="gpu")`로 지정합니다. 작업 상�
 
 | 설정 | 기본값 | 설명 |
 |---|---|---|
-| `AI_CONFIG_VERSION` | `2026-10-01` | 모든 결과에 저장. 모델·임계값을 바꾸면 함께 올림 (버전이 다르면 캐시 안 씀) |
+| `AI_CONFIG_VERSION` | `2026-11-19` | 모든 결과에 저장. 모델·임계값을 바꾸면 함께 올림 (버전이 다르면 캐시 안 씀) |
 | `AI_SEPARATION_MODEL` | `BS-Roformer-SW.ckpt` | 기타 분리 모델 |
 | `AI_SEPARATION_FALLBACK` | `htdemucs_6s` | 분리 대체 모델 |
 | `AI_TRANSCRIPTION_WEIGHTS` | `icassp2022-onnx` | Basic Pitch 가중치 (미세조정 시 `ft-YYYYMMDD`) |

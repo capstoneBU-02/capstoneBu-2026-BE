@@ -9,6 +9,7 @@ from app.domains.processing.schemas import (
     ProcessingStatusResponse,
     RetryResponse,
     StemCreatedResponse,
+    StemPlaybackResponse,
     StemResponse,
 )
 from app.domains.processing.sources import get_current_workspace_id
@@ -56,6 +57,16 @@ def get_stem(
     """기타 음원 상태 조회 (폴링). 작업 실패도 200이고 failure로 알린다."""
     stem = service.get_owned_stem(db, workspace_id, stem_id)
     return ApiResponse.ok(service.to_stem_response(db, stem))
+
+
+@router.get("/stems/{stem_id}/playback", response_model=ApiResponse[StemPlaybackResponse])
+def get_stem_playback(
+    stem_id: int,
+    db: Session = Depends(get_db),
+    workspace_id: int = Depends(get_current_workspace_id),
+) -> ApiResponse[StemPlaybackResponse]:
+    """분리 기타와 기타를 뺀 반주의 재생 URL. 준비 전이면 409 STEM_NOT_READY."""
+    return ApiResponse.ok(service.get_playback(db, workspace_id, stem_id))
 
 
 @router.post("/stems/{stem_id}/retry", status_code=202, response_model=ApiResponse[RetryResponse])
