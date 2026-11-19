@@ -1,7 +1,7 @@
 """add segment history
 
 Revision ID: bb18acb820bd
-Revises: 6bd2e45e122b
+Revises: a61b7c2d9e10
 Create Date: 2026-11-18 19:06:06.953472
 
 """
@@ -13,7 +13,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = "bb18acb820bd"
-down_revision: str | None = "6bd2e45e122b"
+down_revision: str | None = "a61b7c2d9e10"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
