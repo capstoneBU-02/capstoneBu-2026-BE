@@ -1,4 +1,6 @@
+import shutil
 from collections.abc import Callable
+from pathlib import Path
 
 import pytest
 from sqlalchemy import select
@@ -11,7 +13,7 @@ from app.domains.compare.models import (
     ComparisonStage,
     ComparisonStageResult,
 )
-from app.domains.compare.pipeline import contract, judge
+from app.domains.compare.pipeline import contract, judge, performance_audio
 from app.domains.processing.models import Stem
 from tests.domains.compare.conftest import WS, FakeStorage
 from tests.domains.conftest import EnqueueSpy
@@ -25,11 +27,28 @@ REGION = contract.Region("timing_difference", 1000, 1500, 1100, 1650)
 
 @pytest.fixture
 def comparison(
-    db: Session, ready: Stem, enqueue: EnqueueSpy, fake_storage: FakeStorage
+    db: Session,
+    ready: Stem,
+    enqueue: EnqueueSpy,
+    fake_storage: FakeStorage,
+    converted: list[tuple[str, str]],
 ) -> Comparison:
     fake_storage.files[ready.storage_key or ""] = b"RIFFref"
     fake_storage.files["10/performances/500.wav"] = b"RIFFperf"
     return service.request_comparison(db, WS, 500, enqueue=enqueue).comparison
+
+
+@pytest.fixture
+def converted(monkeypatch: pytest.MonkeyPatch) -> list[tuple[str, str]]:
+    """연주 WAV 변환 대역 (ffmpeg 없이 복사). 호출된 (원본, 결과) 경로를 남긴다."""
+    calls: list[tuple[str, str]] = []
+
+    def fake(src: str, out: str, *, sample_rate: int, silence_dbfs: float) -> None:
+        calls.append((src, out))
+        shutil.copyfile(src, out)
+
+    monkeypatch.setattr(performance_audio, "to_wav", fake)
+    return calls
 
 
 @pytest.fixture
@@ -211,3 +230,41 @@ def test_db_error_inside_work_still_records_failure(
     assert not tasks.run_stage(comparison.id, ComparisonStage.ALIGN, broken, session_factory)
     c = _reload(db, comparison)
     assert (c.status, c.error_code) == ("failed", "AI_WORKER_ERROR")
+
+
+def test_performance_is_converted_to_wav_before_judge(
+    db: Session,
+    comparison: Comparison,
+    converted: list[tuple[str, str]],
+    monkeypatch: pytest.MonkeyPatch,
+    session_factory: Callable[[], Session],
+) -> None:
+    seen: list[str] = []
+
+    def align(ref: str, perf: str, s: object) -> contract.AlignmentResult:
+        seen.append(Path(perf).read_bytes().decode())
+        assert perf == converted[-1][1] and perf.endswith(".wav")
+        return ALIGN
+
+    monkeypatch.setattr(judge, "align", align)
+    assert tasks.run_stage(comparison.id, ComparisonStage.ALIGN, tasks.align_work, session_factory)
+    assert seen == ["RIFFperf"]
+
+
+def test_unreadable_performance_is_invalid_audio(
+    db: Session,
+    comparison: Comparison,
+    fake_judge: dict[str, object],
+    monkeypatch: pytest.MonkeyPatch,
+    session_factory: Callable[[], Session],
+) -> None:
+    def fail(src: str, out: str, *, sample_rate: int, silence_dbfs: float) -> None:
+        raise contract.InvalidAudioError("디코딩 실패")
+
+    monkeypatch.setattr(performance_audio, "to_wav", fail)
+    assert not tasks.run_stage(
+        comparison.id, ComparisonStage.ALIGN, tasks.align_work, session_factory
+    )
+    c = _reload(db, comparison)
+    assert (c.status, c.error_code) == ("failed", "PERFORMANCE_INVALID_AUDIO")
+    assert not service.is_retryable(c)

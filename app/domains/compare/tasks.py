@@ -35,7 +35,7 @@ from app.domains.compare.models import (
     ComparisonStatus,
     StageStatus,
 )
-from app.domains.compare.pipeline import contract
+from app.domains.compare.pipeline import contract, performance_audio
 from app.domains.processing.models import Stem
 
 logger = logging.getLogger(__name__)
@@ -259,18 +259,28 @@ def run_stage(
 
 
 def _download_inputs(db: Session, c: Comparison, tmp: Path) -> tuple[str, str]:
-    """기준 기타 음원과 내 연주를 내려받는다. 기준 음원이 없으면 STEM_MISSING."""
+    """기준 기타 음원과 내 연주를 내려받는다. 기준 음원이 없으면 STEM_MISSING.
+
+    내 연주는 형식이 제각각이므로 WAV로 바꿔서 넘긴다 (못 읽거나 무음이면 InvalidAudioError).
+    """
     stem = db.get(Stem, c.stem_id)
     if stem is None or stem.storage_key is None:
         raise StageError(ErrorCode.STEM_MISSING)
     ref = tmp / "reference.wav"
-    perf = tmp / "performance"
+    raw = tmp / "performance.src"
+    perf = tmp / "performance.wav"
     try:
         storage.download_file(stem.storage_key, str(ref))
     except ClientError as e:
         raise StageError(ErrorCode.STEM_MISSING, str(e)) from e
     perf_src = sources.load_performance(db, c.workspace_id, c.performance_id)
-    storage.download_file(perf_src.storage_key, str(perf))
+    storage.download_file(perf_src.storage_key, str(raw))
+    performance_audio.to_wav(
+        str(raw),
+        str(perf),
+        sample_rate=settings.ai_sample_rate,
+        silence_dbfs=settings.ai_silence_dbfs,
+    )
     return str(ref), str(perf)
 
 
