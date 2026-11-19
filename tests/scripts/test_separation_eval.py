@@ -64,6 +64,31 @@ def test_silent_reference_is_not_scored(tmp_path: Path) -> None:
     assert ev.summarize(rows) == {}
 
 
+def test_nan_estimate_is_not_scored() -> None:
+    bad = tone(440)
+    bad[0, 0] = np.nan
+    rows = ev.score_song("s", {"guitar": tone(440)}, {"guitar": bad})
+    assert rows == [{"song": "s", "part": "guitar", "sdr": None, "si_sdr": None}]
+
+
+def test_separate_replaces_old_stems(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.domains.processing.pipeline import separation
+
+    def fake_run(in_path: str, out_dir: str, model: str, model_dir: str) -> dict[str, Path]:
+        path = Path(out_dir) / "x_(Guitar)_m.wav"
+        write(path, tone(330))
+        return {"guitar": path}
+
+    monkeypatch.setattr(separation, "_run_separator", fake_run)
+    dst = tmp_path / "estimates" / "song1"
+    write(dst / "piano.wav", tone(220))  # 예전 실행의 결과
+
+    ev.separate(tmp_path / "mix.wav", dst, "m", "")
+
+    assert sorted(p.name for p in dst.iterdir()) == ["guitar.wav"]
+    assert sorted(p.name for p in dst.parent.iterdir()) == ["song1"]
+
+
 def test_main_scores_estimates_and_backing(tmp_path: Path) -> None:
     guitar, bass, drums = tone(330), tone(110), tone(60, amp=0.2)
     data, est = tmp_path / "data", tmp_path / "est"

@@ -136,13 +136,20 @@ def score_song(
     for part in (*PARTS, BACKING):
         if part not in refs or part not in ests:
             continue
-        silent = is_silent(refs[part])
+        score: float | None = None
+        scale_free: float | None = None
+        if not is_silent(refs[part]):
+            score, scale_free = sdr(refs[part], ests[part]), si_sdr(refs[part], ests[part])
+            if not (math.isfinite(score) and math.isfinite(scale_free)):
+                # 분리 결과에 NaN 등이 섞여 있으면 점수가 의미 없으므로 빼고 알린다
+                print(f"{song}/{part}: 점수를 계산할 수 없음 (분리 결과에 NaN·inf) — 제외")
+                score = scale_free = None
         rows.append(
             {
                 "song": song,
                 "part": part,
-                "sdr": None if silent else round(sdr(refs[part], ests[part]), 3),
-                "si_sdr": None if silent else round(si_sdr(refs[part], ests[part]), 3),
+                "sdr": None if score is None else round(score, 3),
+                "si_sdr": None if scale_free is None else round(scale_free, 3),
             }
         )
     return rows
@@ -167,14 +174,26 @@ def summarize(rows: list[dict[str, Any]]) -> dict[str, dict[str, float | int]]:
 
 
 def separate(mix_path: Path, dst: Path, model: str, model_dir: str) -> float:
-    """mix를 분리해 dst/{악기}.wav로 저장하고 걸린 초를 돌려준다."""
+    """mix를 분리해 dst/{악기}.wav로 저장하고 걸린 초를 돌려준다.
+
+    새 폴더에 모두 저장한 뒤 dst를 통째로 바꾼다. 예전 실행의 악기 파일이 남아
+    이번 결과처럼 채점되지 않게 하고, 실패하면 기존 dst를 그대로 둔다.
+    """
     from app.domains.processing.pipeline.separation import _run_separator
 
-    dst.mkdir(parents=True, exist_ok=True)
+    dst.parent.mkdir(parents=True, exist_ok=True)
     started = time.monotonic()
-    with tempfile.TemporaryDirectory(prefix="eval-sep-") as tmp:
+    with (
+        tempfile.TemporaryDirectory(prefix="eval-sep-") as tmp,
+        tempfile.TemporaryDirectory(prefix=f".{dst.name}-", dir=dst.parent) as staging,
+    ):
+        new = Path(staging) / dst.name
+        new.mkdir()
         for part, path in _run_separator(str(mix_path), tmp, model, model_dir).items():
-            shutil.copyfile(path, dst / f"{part}.wav")
+            shutil.copyfile(path, new / f"{part}.wav")
+        if dst.exists():
+            shutil.rmtree(dst)
+        new.rename(dst)
     return time.monotonic() - started
 
 
@@ -242,7 +261,7 @@ def main(argv: list[str] | None = None) -> dict[str, Any]:
         "parts": summarize(rows),
     }
     (args.output / "summary.json").write_text(
-        json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8"
+        json.dumps(summary, ensure_ascii=False, indent=2, allow_nan=False), encoding="utf-8"
     )
 
     print(f"\n{'악기':<8} {'곡':>3} {'SDR 중앙값':>10} {'SI-SDR 중앙값':>13}")
