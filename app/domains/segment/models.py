@@ -54,11 +54,11 @@ class SegmentHistory(Base):
     __table_args__ = (
         CheckConstraint(
             "start_ms >= 0 AND start_ms < end_ms",
-            name="segment_history_range",
+            name="range",
         ),
         CheckConstraint(
             "version >= 1",
-            name="segment_history_version_positive",
+            name="version_positive",
         ),
         Index(
             "ix_segment_history_segment_id",

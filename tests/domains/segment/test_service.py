@@ -6,7 +6,7 @@ from sqlalchemy.dialects import postgresql
 from sqlalchemy.exc import OperationalError
 
 from app.core.exceptions import BusinessException, ErrorCode
-from app.domains.segment.models import SegmentHistory
+from app.domains.segment.models import Segment, SegmentHistory
 from app.domains.segment.schemas import (
     SegmentCreateRequest,
     SegmentUpdateRequest,
@@ -98,6 +98,54 @@ def test_invalid_segment_range(
         )
 
     assert exc_info.value.error_code == ErrorCode.INVALID_SEGMENT_RANGE
+
+
+@pytest.mark.parametrize("name", ["CHORUS", None])
+def test_create_segment_saves_optional_name(name: str | None) -> None:
+    """구간 생성 시 이름을 저장하고, 생략하면 NULL로 유지한다."""
+    db = Mock()
+
+    def assign_generated_values(segment: Segment) -> None:
+        """DB에서 생성되는 값을 모의로 설정한다."""
+        segment.id = 10
+        segment.created_at = datetime(2026, 11, 18, tzinfo=UTC)
+        segment.updated_at = datetime(2026, 11, 18, tzinfo=UTC)
+
+    db.add.side_effect = assign_generated_values
+
+    request_data = {
+        "start_ms": 10500,
+        "end_ms": 25800,
+    }
+    if name is not None:
+        request_data["name"] = name
+
+    request = SegmentCreateRequest.model_validate(request_data)
+
+    result = create_segment(
+        db=db,
+        track_id=1,
+        request=request,
+        track_duration_ms=60000,
+    )
+
+    db.add.assert_called_once()
+    saved_segment = db.add.call_args.args[0]
+
+    assert isinstance(saved_segment, Segment)
+    assert saved_segment.name == name
+    assert saved_segment.version == 1
+    assert saved_segment.start_ms == 10500
+    assert saved_segment.end_ms == 25800
+
+    assert result.segment_id == 10
+    assert result.name == name
+    assert result.version == 1
+    assert result.duration_ms == 15300
+
+    db.flush.assert_called_once()
+    db.commit.assert_called_once()
+    db.rollback.assert_not_called()
 
 
 def test_create_segment_rolls_back_on_db_error() -> None:

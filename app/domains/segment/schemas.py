@@ -20,6 +20,7 @@ class SegmentCreateRequest(BaseModel):
 
     start_ms: int = Field(ge=0, strict=True)
     end_ms: int = Field(ge=0, strict=True)
+    name: SegmentName | None = None
 
 
 class SegmentUpdateRequest(BaseModel):

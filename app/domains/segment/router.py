@@ -76,7 +76,7 @@ def update_segment(
     db: Session = Depends(get_db),
     workspace: Workspace = Depends(get_current_workspace),
 ) -> ApiResponse[SegmentResponse]:
-    """로그인한 워크스페이스의 구간 범위를 수정한다."""
+    """로그인한 워크스페이스의 구간 범위·이름을 수정한다."""
 
     segment = db.get(Segment, segment_id)
 

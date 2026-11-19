@@ -53,7 +53,7 @@ def create_segment(
         track_id=track_id,
         start_ms=request.start_ms,
         end_ms=request.end_ms,
-        name=None,
+        name=request.name,
         version=1,
     )
 
