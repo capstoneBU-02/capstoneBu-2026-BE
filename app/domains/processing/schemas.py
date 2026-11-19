@@ -48,6 +48,7 @@ class StemResponse(BaseModel):
     current_stage: str | None
     bypass_separation: bool
     playable: bool
+    backing_playable: bool  # 기타를 뺀 반주가 있으면 true (분리를 건너뛰면 false)
     review_reason: str | None
     stages: list[StageView]
     failure: FailureView | None
@@ -98,3 +99,24 @@ class ProcessingStatusResponse(BaseModel):
     stem: StemStatusView | None
     tab: TabStatusView | None
     updated_at: datetime | None  # stem·tab 중 늦은 변경 시각. 둘 다 없으면 null
+
+
+class StemPlaybackTrackView(BaseModel):
+    """재생 대상 하나. available이 false면 url은 null."""
+
+    type: str  # guitar / backing
+    label: str
+    available: bool
+    url: str | None
+
+
+class StemPlaybackResponse(BaseModel):
+    """GET /stems/{stem_id}/playback 응답. 분리 기타와 기타를 뺀 반주.
+
+    하나라도 없으면 is_partial (분리를 건너뛴 음원은 반주가 없다).
+    """
+
+    stem_id: int
+    is_partial: bool
+    tracks: list[StemPlaybackTrackView]
+    expires_at: datetime

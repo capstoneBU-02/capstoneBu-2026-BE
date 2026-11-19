@@ -11,6 +11,7 @@ from sqlalchemy import (
     UniqueConstraint,
     text,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.base_entity import Base, SoftDeleteMixin, TimestampMixin
@@ -84,6 +85,9 @@ class Stem(Base, TimestampMixin, SoftDeleteMixin):
     current_stage: Mapped[str | None] = mapped_column(String(20))
     bypass_separation: Mapped[bool]
     storage_key: Mapped[str | None] = mapped_column(String(500))  # guitar.wav
+    # 기타를 뺀 악기별 음원과 반주의 저장 위치 (예: {"bass": key, "backing": key})
+    # 분리를 건너뛰면 null
+    part_keys: Mapped[dict[str, str] | None] = mapped_column(JSONB)
     # preprocess가 실제로 넣은 앞쪽 여유. separate는 설정값이 아니라 이 값으로 자른다
     input_pad_ms: Mapped[int | None]
     review_reason: Mapped[str | None] = mapped_column(String(50))

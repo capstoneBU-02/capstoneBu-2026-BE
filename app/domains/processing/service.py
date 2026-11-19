@@ -11,6 +11,7 @@ from sqlalchemy import func, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.core import storage
 from app.core.config import Settings, get_settings
 from app.core.exceptions import BusinessException, ErrorCode
 from app.core.locks import LockClass
@@ -32,12 +33,15 @@ from app.domains.processing.schemas import (
     RetryResponse,
     StageView,
     StemCreatedResponse,
+    StemPlaybackResponse,
+    StemPlaybackTrackView,
     StemResponse,
 )
 
 logger = logging.getLogger(__name__)
 
 MAX_RETRIES = 3
+BACKING_PART = "backing"  # part_keys에서 기타를 뺀 반주의 이름 (pipeline.separation.BACKING)
 
 # processing 상태가 단계 강제 종료 시간보다 이만큼 더 지나면 멈춘 작업으로 본다
 STALE_MARGIN_SEC = 60
@@ -289,6 +293,37 @@ def is_playable(stem: Stem) -> bool:
     return stem.status in READY_STATUSES and stem.storage_key is not None
 
 
+def backing_key(stem: Stem) -> str | None:
+    """재생할 수 있는 반주의 저장 위치. 기타 음원이 준비되지 않았거나 반주가 없으면 None."""
+    if not is_playable(stem):
+        return None
+    return (stem.part_keys or {}).get(BACKING_PART)
+
+
+def get_playback(db: Session, workspace_id: int, stem_id: int) -> StemPlaybackResponse:
+    """분리 기타·반주 재생 URL을 한 번에 준다. 준비 전이면 STEM_NOT_READY."""
+    stem = get_owned_stem(db, workspace_id, stem_id)
+    if not is_playable(stem):
+        raise BusinessException(ErrorCode.STEM_NOT_READY)
+    tracks = [
+        _playback_track("guitar", "분리 기타", stem.storage_key),
+        _playback_track("backing", "반주 (기타 제외)", backing_key(stem)),
+    ]
+    expires = datetime.now(UTC) + timedelta(seconds=get_settings().s3_presigned_expires_seconds)
+    return StemPlaybackResponse(
+        stem_id=stem.id,
+        is_partial=not all(t.available for t in tracks),
+        tracks=tracks,
+        expires_at=expires,
+    )
+
+
+def _playback_track(kind: str, label: str, key: str | None) -> StemPlaybackTrackView:
+    """재생 대상 하나. 파일이 없으면 available=false."""
+    url = storage.presigned_download_url(key) if key else None
+    return StemPlaybackTrackView(type=kind, label=label, available=url is not None, url=url)
+
+
 def to_stem_response(db: Session, stem: Stem) -> StemResponse:
     """GET /stems/{stem_id} 응답으로 변환."""
     latest = _latest_stage_results(db, stem.id)
@@ -320,6 +355,7 @@ def to_stem_response(db: Session, stem: Stem) -> StemResponse:
         current_stage=stem.current_stage,
         bypass_separation=stem.bypass_separation,
         playable=is_playable(stem),
+        backing_playable=backing_key(stem) is not None,
         review_reason=stem.review_reason,
         stages=stages,
         failure=failure,
