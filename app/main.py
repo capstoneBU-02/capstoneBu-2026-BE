@@ -13,6 +13,7 @@ from app.domains.account.router import router as account_router
 from app.domains.compare.router import router as compare_router
 from app.domains.health.router import router as health_router
 from app.domains.input.router import router as input_router
+from app.domains.performance.router import router as performance_router
 from app.domains.processing.router import router as processing_router
 from app.domains.segment.router import router as segment_router
 from app.domains.tab.router import router as tab_router
@@ -58,6 +59,7 @@ def create_app() -> FastAPI:
     app.include_router(processing_router, prefix=settings.api_prefix)
     app.include_router(compare_router, prefix=settings.api_prefix)
     app.include_router(segment_router, prefix=settings.api_prefix)
+    app.include_router(performance_router, prefix=settings.api_prefix)
     app.include_router(tab_router, prefix=settings.api_prefix)
 
     return app

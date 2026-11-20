@@ -17,6 +17,7 @@ from app.domains.account import models as account_models
 from app.domains.compare import models as compare_models
 from app.domains.input import models as input_models
 from app.domains.input.models import Track
+from app.domains.performance.models import Performance, PerformanceHistory
 from app.domains.processing import models as processing_models
 from app.domains.processing import sources
 from app.domains.segment.models import Segment, SegmentHistory
@@ -30,6 +31,8 @@ TABLES = [
     input_models.Track.__table__,
     Segment.__table__,
     SegmentHistory.__table__,
+    Performance.__table__,
+    PerformanceHistory.__table__,
     processing_models.Stem.__table__,
     processing_models.StemStageResult.__table__,
     tab_models.Tab.__table__,
