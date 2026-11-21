@@ -5,6 +5,7 @@ import pytest
 from fastapi import UploadFile
 from sqlalchemy import select
 from sqlalchemy.orm import Session
+from starlette.datastructures import Headers
 
 from app.core.exceptions import BusinessException, ErrorCode
 from app.domains.input.models import Track
@@ -47,11 +48,15 @@ def create_segment(
 def create_upload(
     filename: str = "performance.wav",
     content: bytes = b"test audio data",
+    content_type: str | None = None,
 ) -> UploadFile:
     """테스트용 오디오 업로드 파일을 생성한다."""
+    headers = Headers({"content-type": content_type}) if content_type else None
+
     return UploadFile(
         file=BytesIO(content),
         filename=filename,
+        headers=headers,
     )
 
 
@@ -268,3 +273,46 @@ def test_create_performance_invalid_file(
 
     assert exc_info.value.error_code == ErrorCode.INVALID_INPUT
     assert uploaded == []
+
+
+def test_create_performance_accepts_webm_opus(
+    db: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """브라우저 녹음의 WebM Opus MIME 타입을 허용한다."""
+    segment = create_segment(db)
+    uploaded = mock_storage(monkeypatch)
+
+    result = service.create_performance(
+        db=db,
+        workspace_id=10,
+        segment_id=segment.id,
+        source="RECORDING",
+        audio_file=create_upload(
+            filename="blob",
+            content_type="audio/webm;codecs=opus",
+        ),
+    )
+
+    assert result.performance_id > 0
+    assert len(uploaded) == 1
+    assert uploaded[0]["content_type"] == "audio/webm"
+
+
+def test_validate_audio_file_accepts_webm_opus() -> None:
+    """브라우저 녹음의 WebM Opus MIME 타입을 허용한다."""
+    content = b"test audio data"
+
+    audio_file = create_upload(
+        filename="blob",
+        content=content,
+        content_type="audio/webm;codecs=opus",
+    )
+
+    result = service.validate_audio_file(
+        audio_file,
+        content,
+        "RECORDING",
+    )
+
+    assert result == (".webm", "audio/webm")
