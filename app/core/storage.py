@@ -97,3 +97,32 @@ def presigned_download_url(key: str, download_name: str | None = None) -> str:
     return _get_public_s3().generate_presigned_url(
         "get_object", Params=params, ExpiresIn=s.s3_presigned_expires_seconds
     )
+
+
+def file_exists(key: str) -> bool:
+    """저장소에 key가 실제로 존재하는지 확인한다."""
+    try:
+        get_s3().head_object(Bucket=get_settings().s3_bucket, Key=key)
+        return True
+    except ClientError as exc:
+        code = str(exc.response.get("Error", {}).get("Code", ""))
+        if code in ("404", "NoSuchKey", "NotFound"):
+            return False
+        raise
+
+
+def presigned_get_url(
+    key: str,
+    *,
+    expires_in_seconds: int | None = None,
+    download_name: str | None = None,
+) -> str:
+    """유효기간(초)과 다운로드 파일명(선택)을 지정해 Presigned GET URL을 생성한다."""
+    s = get_settings()
+    params: dict[str, str] = {"Bucket": s.s3_bucket, "Key": key}
+    if download_name is not None:
+        params["ResponseContentDisposition"] = (
+            f"attachment; filename*=UTF-8''{quote(download_name)}"
+        )
+    expires = expires_in_seconds or s.s3_presigned_expires_seconds
+    return _get_public_s3().generate_presigned_url("get_object", Params=params, ExpiresIn=expires)

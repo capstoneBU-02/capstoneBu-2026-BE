@@ -15,6 +15,7 @@ from app.core.config import get_settings
 from app.core.exceptions import BusinessException, ErrorCode
 from app.domains.account import models as account_models
 from app.domains.compare import models as compare_models
+from app.domains.data import models as data_models
 from app.domains.input import models as input_models
 from app.domains.input.models import Track
 from app.domains.processing import models as processing_models
@@ -37,6 +38,9 @@ TABLES = [
     compare_models.Comparison.__table__,
     compare_models.ComparisonStageResult.__table__,
     compare_models.ComparisonRegion.__table__,
+    data_models.MediaTask.__table__,
+    data_models.TabResult.__table__,
+    data_models.FileAccessLog.__table__,
 ]
 
 
