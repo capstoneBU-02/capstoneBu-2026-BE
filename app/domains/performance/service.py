@@ -45,7 +45,6 @@ def validate_audio_file(
     source: str,
 ) -> tuple[str, str]:
     """연주 입력 방식, 파일 크기 및 오디오 형식을 검증한다."""
-
     if source not in SOURCE_TYPES:
         raise BusinessException(
             ErrorCode.INVALID_INPUT,
@@ -59,22 +58,20 @@ def validate_audio_file(
         )
 
     settings = get_settings()
-
     if len(file_bytes) > settings.upload_max_bytes:
         raise BusinessException(ErrorCode.FILE_TOO_LARGE)
 
     filename = file.filename or "performance"
     ext = Path(filename).suffix.lower()
 
-    # 확장자가 없는 브라우저 녹음 파일은 MIME 타입으로 확장자를 판별한다.
     if not ext and file.content_type:
-        normalized_type = file.content_type.split(";")[0].strip().lower()
+        content_type = file.content_type.split(";")[0].strip().lower()
 
         ext = next(
             (
                 extension
                 for extension, media_type in AUDIO_TYPES.items()
-                if media_type == normalized_type
+                if media_type == content_type
             ),
             "",
         )
@@ -95,7 +92,6 @@ def get_segment_for_workspace(
     segment_id: int,
 ) -> tuple[Segment, Track]:
     """워크스페이스 소유의 구간과 원곡을 함께 조회한다."""
-
     result = db.execute(
         select(Segment, Track)
         .join(Track, Segment.track_id == Track.id)
@@ -118,7 +114,6 @@ def get_previous_performance(
     segment_id: int,
 ) -> Performance | None:
     """동일 워크스페이스·원곡·구간의 가장 최근 연주를 조회한다."""
-
     return db.scalars(
         select(Performance)
         .where(
@@ -136,7 +131,6 @@ def get_previous_performance(
 
 def delete_storage_object(storage_key: str) -> None:
     """DB 등록 실패 시 업로드한 음원 파일을 정리한다."""
-
     try:
         settings = get_settings()
         storage.get_s3().delete_object(
@@ -155,8 +149,6 @@ def create_performance(
     audio_file: UploadFile,
 ) -> PerformanceCreateResponse:
     """연주 파일을 저장하고 이전 연주와의 이력을 연결한다."""
-
-    # 파일을 읽기 전에 업로드 크기를 먼저 검사한다.
     settings = get_settings()
 
     if audio_file.size is not None and audio_file.size > settings.upload_max_bytes:
@@ -219,6 +211,7 @@ def create_performance(
             track_id=performance.track_id,
             segment_id=performance.segment_id,
             source=performance.source,
+            storage_key=performance.storage_key,
             start_ms=performance.start_ms,
             end_ms=performance.end_ms,
             created_at=performance.created_at,
@@ -251,7 +244,6 @@ def get_performances_by_segment(
     segment_id: int,
 ) -> PerformanceListResponse:
     """워크스페이스 소유 구간의 연주 목록을 최신순으로 조회한다."""
-
     get_segment_for_workspace(db, workspace_id, segment_id)
 
     performances = db.scalars(
@@ -273,6 +265,7 @@ def get_performances_by_segment(
                 performance_id=item.id,
                 track_id=item.track_id,
                 source=item.source,
+                storage_key=item.storage_key,
                 start_ms=item.start_ms,
                 end_ms=item.end_ms,
                 created_at=item.created_at,
