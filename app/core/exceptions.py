@@ -154,6 +154,11 @@ class ErrorCode(Enum):
         "파일 크기가 최대 허용 용량을 초과했습니다.",
     )
 
+    # Data (DATA)
+    TASK_NOT_FOUND = (404, "TASK_NOT_FOUND", "작업 이력을 찾을 수 없습니다.")
+    FILE_ACCESS_DENIED = (403, "FILE_ACCESS_DENIED", "해당 파일에 대한 접근 권한이 없습니다.")
+    FILE_NOT_FOUND = (404, "FILE_NOT_FOUND", "요청한 파일을 찾을 수 없습니다.")
+
     @property
     def status(self) -> int:
         return int(self.value[0])
