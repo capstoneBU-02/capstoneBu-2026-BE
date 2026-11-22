@@ -64,24 +64,12 @@ def fake_storage(monkeypatch: pytest.MonkeyPatch) -> FakeStorage:
 
 
 @pytest.fixture
-def workspaces(db: Session) -> Iterator[tuple[Workspace, Workspace]]:
-    """conftest.py를 수정하지 않고도 file_access_logs 테이블과 워크스페이스를 준비한다."""
-    bind = db.get_bind()
-    FileAccessLog.__table__.create(bind=bind, checkfirst=True)
-    if Performance is not None:
-        Performance.__table__.create(bind=bind, checkfirst=True)
-
+def workspaces(db: Session) -> tuple[Workspace, Workspace]:
     ws1 = Workspace(owner_type="TESTER_CODE")
     ws2 = Workspace(owner_type="TESTER_CODE")
     db.add_all([ws1, ws2])
     db.commit()
-
-    yield ws1, ws2
-
-    db.execute(text("TRUNCATE file_access_logs RESTART IDENTITY CASCADE"))
-    if Performance is not None:
-        db.execute(text("TRUNCATE performances RESTART IDENTITY CASCADE"))
-    db.commit()
+    return ws1, ws2
 
 
 @pytest.fixture

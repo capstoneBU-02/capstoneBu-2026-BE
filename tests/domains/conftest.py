@@ -38,8 +38,6 @@ TABLES = [
     compare_models.Comparison.__table__,
     compare_models.ComparisonStageResult.__table__,
     compare_models.ComparisonRegion.__table__,
-    data_models.MediaTask.__table__,
-    data_models.TabResult.__table__,
     data_models.FileAccessLog.__table__,
 ]
 

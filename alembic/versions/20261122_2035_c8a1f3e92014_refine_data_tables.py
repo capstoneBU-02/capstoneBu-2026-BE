@@ -1,7 +1,7 @@
 """refine data tables and merge heads
 
 Revision ID: c8a1f3e92014
-Revises: b6160a57056e, 9c0b8c721792
+Revises: b6160a57056e
 Create Date: 2026-11-22 20:35:00.000000
 
 """
@@ -13,7 +13,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = "c8a1f3e92014"
-down_revision: str | tuple[str, str] | None = ("b6160a57056e", "9c0b8c721792")
+down_revision: str | tuple[str, str] | None = "b6160a57056e"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

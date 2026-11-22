@@ -1,7 +1,7 @@
 import importlib
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import func, select
+from sqlalchemy import func, inspect, select
 from sqlalchemy.orm import Session
 
 from app.core import storage
@@ -122,12 +122,13 @@ def _calculate_workspace_storage_bytes(db: Session, workspace_id: int) -> int:
         if stem.part_keys:
             object_keys.update(stem.part_keys.values())
 
-    performances = db.scalars(
-        select(Performance).where(Performance.workspace_id == workspace_id)
-    ).all()
-    for perf in performances:
-        if perf.storage_key:
-            object_keys.add(perf.storage_key)
+    if Performance is not None and inspect(db.get_bind()).has_table("performances"):
+        performances = db.scalars(
+            select(Performance).where(Performance.workspace_id == workspace_id)
+        ).all()
+        for perf in performances:
+            if perf.storage_key:
+                object_keys.add(perf.storage_key)
 
     active_tabs = db.scalars(
         select(Tab).where(
@@ -254,7 +255,7 @@ def list_workspace_tasks(
             )
         )
 
-    # 최신순 정렬 후 페이지네이션
+    # 최신순 정렬 및 페이지네이션
     all_items.sort(key=lambda item: (item.created_at, item.task_id), reverse=True)
     total_count = len(all_items)
     offset = (page - 1) * limit
@@ -326,7 +327,7 @@ def create_presigned_file_url(
     normalized_key = req.file_key.lstrip("/")
     required_prefix = _workspace_prefix(workspace_id)
 
-    # 경로 탐색(../) 차단 및 워크스페이스 소유권 접두사({workspace_id}/) 검증
+    # 경로 탐색(../) 차단 및 워크스페이스 소유권 접두어({workspace_id}/) 검증
     if ".." in normalized_key.split("/") or not normalized_key.startswith(required_prefix):
         raise BusinessException(ErrorCode.FILE_ACCESS_DENIED)
 
