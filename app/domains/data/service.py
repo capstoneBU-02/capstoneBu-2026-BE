@@ -1,3 +1,4 @@
+import importlib
 from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import func, select
@@ -6,9 +7,9 @@ from sqlalchemy.orm import Session
 from app.core import storage
 from app.core.config import get_settings
 from app.core.exceptions import BusinessException, ErrorCode
-from app.domains.data.models import FileAccessLog, MediaTask, TabResult
+from app.domains.compare.models import Comparison, ComparisonStageResult
+from app.domains.data.models import FileAccessLog
 from app.domains.data.schemas import (
-    DataTabDownloadResponse,
     PaginationMeta,
     PresignedUrlRequest,
     PresignedUrlResponse,
@@ -18,155 +19,88 @@ from app.domains.data.schemas import (
     WorkspaceTaskListResponse,
 )
 from app.domains.input.models import Track
-from app.domains.processing.models import Stem
+from app.domains.processing.models import Stem, StemStageResult
 from app.domains.segment.models import Segment
 from app.domains.tab import keys as tab_keys
-from app.domains.tab.models import DONE_STATUSES, Tab, TabStatus
+from app.domains.tab.models import DONE_STATUSES as TAB_DONE_STATUSES
+from app.domains.tab.models import Tab, TabStageResult
 
-SUPPORTED_DOWNLOAD_FORMATS = frozenset({"musicxml"})
-SUPPORTED_PAGE_OPTIONS = frozenset({"all", "single"})
-PRESIGNED_DOWNLOAD_EXPIRES_SEC = 600
-
-
-def _map_tab_status(raw_status: str) -> str:
-    """내부 TabStatus(success 등)를 DATA 명세 상태(completed 등)로 매핑한다."""
-    if raw_status == TabStatus.SUCCESS:
-        return "completed"
-    return raw_status
+try:
+    Performance = importlib.import_module("app.domains.performance.models").Performance
+except ImportError:  # REC(#70) 머지 전 브랜치 호환
+    Performance = None
 
 
-def _normalize_workspace_prefixes(workspace_id: int) -> tuple[str, ...]:
-    """저장소 key 규칙({workspace_id}/... 및 ws_{workspace_id}/...) 접두사."""
-    return (f"{workspace_id}/", f"ws_{workspace_id}/")
+def _workspace_prefix(workspace_id: int) -> str:
+    """저장소 key 규칙: {workspace_id}/..."""
+    return f"{workspace_id}/"
 
 
-def get_tab_download(
-    db: Session,
-    workspace_id: int,
-    tab_id: int,
-    file_format: str = "musicxml",
-    page_option: str = "all",
-) -> DataTabDownloadResponse:
-    """DATA-01: 생성 완료된 타브 악보의 보안 다운로드 링크를 발급한다."""
-    if file_format not in SUPPORTED_DOWNLOAD_FORMATS:
-        raise BusinessException(ErrorCode.UNSUPPORTED_DOWNLOAD_FORMAT)
-    if page_option not in SUPPORTED_PAGE_OPTIONS:
-        raise BusinessException(ErrorCode.INVALID_INPUT)
+def _collect_deleted_keys(db: Session, workspace_id: int) -> set[str]:
+    """소프트 삭제된 자원(Stem, Tab, Comparison)에 연결된 모든 파일 키를 수집한다."""
+    deleted_keys: set[str] = set()
 
-    # 1. tab_results 테이블 우선 확인 후, 기존 tabs 테이블과 연동 조회
-    tab_result = db.get(TabResult, tab_id)
-    tab = db.scalars(
-        select(Tab).where(Tab.id == tab_id, Tab.deleted_at.is_(None))
-    ).first()
-
-    if tab is None and tab_result is None:
-        raise BusinessException(ErrorCode.TAB_NOT_FOUND)
-
-    owner_workspace_id = tab.workspace_id if tab is not None else tab_result.workspace_id  # type: ignore[union-attr]
-    if owner_workspace_id != workspace_id:
-        raise BusinessException(ErrorCode.TAB_NOT_FOUND)
-
-    if tab is not None and tab.status not in DONE_STATUSES:
-        raise BusinessException(ErrorCode.TAB_NOT_READY)
-
-    segment_id = tab.segment_id if tab is not None else tab_result.segment_id  # type: ignore[union-attr]
-    track_id = tab.track_id if tab is not None else 0
-    version = tab.version if tab is not None else 1
-
-    if tab_result is not None:
-        file_key = tab_result.file_key
-    else:
-        assert tab is not None
-        file_key = tab_keys.musicxml_key(tab)
-
-    file_name = f"track_{track_id}_segment_{segment_id}_v{version}.{file_format}"
-    expires_at = datetime.now(UTC) + timedelta(seconds=PRESIGNED_DOWNLOAD_EXPIRES_SEC)
-    download_url = storage.presigned_get_url(
-        file_key,
-        expires_in_seconds=PRESIGNED_DOWNLOAD_EXPIRES_SEC,
-        download_name=file_name,
-    )
-
-    return DataTabDownloadResponse(
-        tab_id=tab_id,
-        segment_id=segment_id,
-        format=file_format,
-        page_option=page_option,
-        file_name=file_name,
-        download_url=download_url,
-        expires_at=expires_at,
-    )
-
-
-def list_workspace_tasks(
-    db: Session,
-    workspace_id: int,
-    page: int = 1,
-    limit: int = 20,
-) -> WorkspaceTaskListResponse:
-    """DATA-02: 현재 워크스페이스에 보관된 이전 작업 내역 및 스토리지 사용량을 조회한다."""
-    settings = get_settings()
-
-    total_count = int(
-        db.scalar(
-            select(func.count(Tab.id)).where(
-                Tab.workspace_id == workspace_id,
-                Tab.deleted_at.is_(None),
-            )
-        )
-        or 0
-    )
-
-    offset = (page - 1) * limit
-    rows = db.execute(
-        select(Tab, Segment, Track, Stem)
-        .join(Segment, Tab.segment_id == Segment.id)
-        .join(Track, Tab.track_id == Track.id)
-        .outerjoin(Stem, Tab.stem_id == Stem.id)
-        .where(
-            Tab.workspace_id == workspace_id,
-            Tab.deleted_at.is_(None),
-        )
-        .order_by(Tab.created_at.desc(), Tab.id.desc())
-        .offset(offset)
-        .limit(limit)
+    deleted_stems = db.scalars(
+        select(Stem).where(Stem.workspace_id == workspace_id, Stem.deleted_at.is_not(None))
     ).all()
-
-    # media_tasks 테이블에 매핑된 이력이 있으면 parent_task_id, is_reused 참조
-    tab_ids = [row.Tab.id for row in rows]
-    media_task_map: dict[int, MediaTask] = {}
-    if tab_ids:
-        mt_rows = db.scalars(
-            select(MediaTask).where(MediaTask.task_id.in_(tab_ids))
-        ).all()
-        media_task_map = {mt.task_id: mt for mt in mt_rows}
-
-    items: list[WorkspaceTaskItem] = []
-    for tab, segment, track, stem in rows:
-        mt = media_task_map.get(tab.id)
-        start_ms = stem.start_ms if stem is not None else segment.start_ms
-        end_ms = stem.end_ms if stem is not None else segment.end_ms
-        target_part = stem.part if stem is not None else "guitar"
-
-        items.append(
-            WorkspaceTaskItem(
-                task_id=tab.id,
-                segment_id=tab.segment_id,
-                track_id=tab.track_id,
-                parent_task_id=mt.parent_task_id if mt is not None else None,
-                version=tab.version,
-                track_filename=track.filename,
-                start_sec=round(start_ms / 1000.0, 3),
-                end_sec=round(end_ms / 1000.0, 3),
-                target_part=target_part,
-                priority=tab.result_type,
-                status=_map_tab_status(tab.status),
-                is_reused=mt.is_reused if mt is not None else False,
-                created_at=tab.created_at,
+    deleted_stem_ids: list[int] = []
+    for stem in deleted_stems:
+        deleted_stem_ids.append(stem.id)
+        if stem.storage_key:
+            deleted_keys.add(stem.storage_key)
+        if stem.part_keys:
+            deleted_keys.update(stem.part_keys.values())
+    if deleted_stem_ids:
+        stage_keys = db.scalars(
+            select(StemStageResult.output_key).where(
+                StemStageResult.stem_id.in_(deleted_stem_ids),
+                StemStageResult.output_key.is_not(None),
             )
-        )
+        ).all()
+        deleted_keys.update(k for k in stage_keys if k)
 
-    # 워크스페이스 전체 스토리지 사용량 합산 (tracks + tab_results)
+    deleted_tabs = db.scalars(
+        select(Tab).where(Tab.workspace_id == workspace_id, Tab.deleted_at.is_not(None))
+    ).all()
+    deleted_tab_ids: list[int] = []
+    for tab in deleted_tabs:
+        deleted_tab_ids.append(tab.id)
+        deleted_keys.add(tab_keys.musicxml_key(tab))
+        deleted_keys.add(tab_keys.tab_json_key(tab))
+    if deleted_tab_ids:
+        tab_stage_keys = db.scalars(
+            select(TabStageResult.output_key).where(
+                TabStageResult.tab_id.in_(deleted_tab_ids),
+                TabStageResult.output_key.is_not(None),
+            )
+        ).all()
+        deleted_keys.update(k for k in tab_stage_keys if k)
+
+    deleted_comparisons = db.scalars(
+        select(Comparison).where(
+            Comparison.workspace_id == workspace_id, Comparison.deleted_at.is_not(None)
+        )
+    ).all()
+    deleted_comp_ids: list[int] = []
+    for comp in deleted_comparisons:
+        deleted_comp_ids.append(comp.id)
+        if comp.result_key:
+            deleted_keys.add(comp.result_key)
+    if deleted_comp_ids:
+        comp_stage_keys = db.scalars(
+            select(ComparisonStageResult.output_key).where(
+                ComparisonStageResult.comparison_id.in_(deleted_comp_ids),
+                ComparisonStageResult.output_key.is_not(None),
+            )
+        ).all()
+        deleted_keys.update(k for k in comp_stage_keys if k)
+
+    return deleted_keys
+
+
+def _calculate_workspace_storage_bytes(db: Session, workspace_id: int) -> int:
+    """워크스페이스 전체 스토리지 사용량(원곡 + 분리 결과 + 연주 + 타브)을 계산한다."""
+    # 1. 원곡 트랙 크기 (DB 컬럼 합산)
     track_bytes = int(
         db.scalar(
             select(func.coalesce(func.sum(Track.file_size_bytes), 0)).where(
@@ -175,18 +109,161 @@ def list_workspace_tasks(
         )
         or 0
     )
-    tab_bytes = int(
-        db.scalar(
-            select(func.coalesce(func.sum(TabResult.file_size_bytes), 0)).where(
-                TabResult.workspace_id == workspace_id
+
+    # 2. 분리 결과(Stem), 연주(Performance), 타브(Tab) 객체 키 수집 후 스토리지 크기 합산
+    object_keys: set[str] = set()
+
+    active_stems = db.scalars(
+        select(Stem).where(Stem.workspace_id == workspace_id, Stem.deleted_at.is_(None))
+    ).all()
+    for stem in active_stems:
+        if stem.storage_key:
+            object_keys.add(stem.storage_key)
+        if stem.part_keys:
+            object_keys.update(stem.part_keys.values())
+
+    performances = db.scalars(
+        select(Performance).where(Performance.workspace_id == workspace_id)
+    ).all()
+    for perf in performances:
+        if perf.storage_key:
+            object_keys.add(perf.storage_key)
+
+    active_tabs = db.scalars(
+        select(Tab).where(
+            Tab.workspace_id == workspace_id,
+            Tab.deleted_at.is_(None),
+            Tab.status.in_(TAB_DONE_STATUSES),
+        )
+    ).all()
+    for tab in active_tabs:
+        object_keys.add(tab_keys.musicxml_key(tab))
+        object_keys.add(tab_keys.tab_json_key(tab))
+
+    derived_bytes = sum(storage.object_size(key) for key in object_keys)
+    return track_bytes + derived_bytes
+
+
+def list_workspace_tasks(
+    db: Session,
+    workspace_id: int,
+    page: int = 1,
+    limit: int = 20,
+) -> WorkspaceTaskListResponse:
+    """DATA-02: 현재 워크스페이스의 이전 작업 이력(타브·분리·비교) 및 스토리지 사용량을 조회한다."""
+    settings = get_settings()
+
+    # 1. 타브 생성 작업
+    tab_rows = db.execute(
+        select(Tab, Segment, Track, Stem)
+        .join(Segment, Tab.segment_id == Segment.id)
+        .join(Track, Tab.track_id == Track.id)
+        .outerjoin(Stem, Tab.stem_id == Stem.id)
+        .where(
+            Tab.workspace_id == workspace_id,
+            Tab.deleted_at.is_(None),
+        )
+    ).all()
+
+    # 2. 음원 분리 작업 (타브가 연결되지 않은 단독 분리 작업 포함)
+    stem_rows = db.execute(
+        select(Stem, Segment, Track)
+        .join(Segment, Stem.segment_id == Segment.id)
+        .join(Track, Stem.track_id == Track.id)
+        .where(
+            Stem.workspace_id == workspace_id,
+            Stem.deleted_at.is_(None),
+        )
+    ).all()
+
+    # 3. 연주 비교 작업
+    comparison_rows = db.execute(
+        select(Comparison, Segment, Track, Stem)
+        .join(Segment, Comparison.segment_id == Segment.id)
+        .join(Track, Comparison.track_id == Track.id)
+        .outerjoin(Stem, Comparison.stem_id == Stem.id)
+        .where(
+            Comparison.workspace_id == workspace_id,
+            Comparison.deleted_at.is_(None),
+        )
+    ).all()
+
+    all_items: list[WorkspaceTaskItem] = []
+
+    for tab, segment, track, stem in tab_rows:
+        start_ms = stem.start_ms if stem is not None else segment.start_ms
+        end_ms = stem.end_ms if stem is not None else segment.end_ms
+        target_part = stem.part if stem is not None else "guitar"
+        all_items.append(
+            WorkspaceTaskItem(
+                task_id=tab.id,
+                task_type="tab",
+                segment_id=tab.segment_id,
+                track_id=tab.track_id,
+                parent_task_id=None,
+                version=tab.version,
+                track_filename=track.filename,
+                start_sec=round(start_ms / 1000.0, 3),
+                end_sec=round(end_ms / 1000.0, 3),
+                target_part=target_part,
+                priority=tab.result_type,
+                status=tab.status,
+                is_reused=False,
+                created_at=tab.created_at,
             )
         )
-        or 0
-    )
-    usage_bytes = track_bytes + tab_bytes
+
+    for stem, _segment, track in stem_rows:
+        all_items.append(
+            WorkspaceTaskItem(
+                task_id=stem.id,
+                task_type="stem",
+                segment_id=stem.segment_id,
+                track_id=stem.track_id,
+                parent_task_id=None,
+                version=stem.version,
+                track_filename=track.filename,
+                start_sec=round(stem.start_ms / 1000.0, 3),
+                end_sec=round(stem.end_ms / 1000.0, 3),
+                target_part=stem.part,
+                priority="separation",
+                status=stem.status,
+                is_reused=False,
+                created_at=stem.created_at,
+            )
+        )
+
+    for comp, _segment, track, stem in comparison_rows:
+        target_part = stem.part if stem is not None else "guitar"
+        all_items.append(
+            WorkspaceTaskItem(
+                task_id=comp.id,
+                task_type="comparison",
+                segment_id=comp.segment_id,
+                track_id=comp.track_id,
+                parent_task_id=None,
+                version=1,
+                track_filename=track.filename,
+                start_sec=round(comp.start_ms / 1000.0, 3),
+                end_sec=round(comp.end_ms / 1000.0, 3),
+                target_part=target_part,
+                priority="comparison",
+                status=comp.status,
+                is_reused=False,
+                created_at=comp.created_at,
+            )
+        )
+
+    # 최신순 정렬 후 페이지네이션
+    all_items.sort(key=lambda item: (item.created_at, item.task_id), reverse=True)
+    total_count = len(all_items)
+    offset = (page - 1) * limit
+    paged_items = all_items[offset : offset + limit]
+
+    usage_bytes = _calculate_workspace_storage_bytes(db, workspace_id)
 
     return WorkspaceTaskListResponse(
-        items=items,
+        items=paged_items,
         pagination=PaginationMeta(
             page=page,
             limit=limit,
@@ -204,7 +281,7 @@ def get_task_detail(
     workspace_id: int,
     task_id: int,
 ) -> TaskDetailResponse:
-    """DATA-02: 특정 이전 작업의 세부 결과 및 관련 자원 ID를 재열람한다."""
+    """DATA-02: 특정 이전 작업의 세부 결과 및 관련 자원 ID를 재열람한다 (tabs·stems 기준)."""
     row = db.execute(
         select(Tab, Segment, Stem)
         .join(Segment, Tab.segment_id == Segment.id)
@@ -219,7 +296,6 @@ def get_task_detail(
         raise BusinessException(ErrorCode.TASK_NOT_FOUND)
 
     tab, segment, stem = row.Tab, row.Segment, row.Stem
-    mt = db.get(MediaTask, task_id)
     start_ms = stem.start_ms if stem is not None else segment.start_ms
     end_ms = stem.end_ms if stem is not None else segment.end_ms
 
@@ -235,8 +311,8 @@ def get_task_detail(
         priority=tab.result_type,
         tuning_id=tab.tuning_id,
         capo=tab.capo,
-        status=_map_tab_status(tab.status),
-        is_reused=mt.is_reused if mt is not None else False,
+        status=tab.status,
+        is_reused=False,
         created_at=tab.created_at,
     )
 
@@ -248,11 +324,15 @@ def create_presigned_file_url(
 ) -> PresignedUrlResponse:
     """DATA-05: 비공개 파일의 워크스페이스 소유권 검증 후 임시 Presigned URL 발급 및 로그 기록."""
     normalized_key = req.file_key.lstrip("/")
-    allowed_prefixes = _normalize_workspace_prefixes(workspace_id)
+    required_prefix = _workspace_prefix(workspace_id)
 
-    # 경로 탐색(../) 차단 및 워크스페이스 소유권 접두사 검증
-    if ".." in normalized_key.split("/") or not normalized_key.startswith(allowed_prefixes):
+    # 경로 탐색(../) 차단 및 워크스페이스 소유권 접두사({workspace_id}/) 검증
+    if ".." in normalized_key.split("/") or not normalized_key.startswith(required_prefix):
         raise BusinessException(ErrorCode.FILE_ACCESS_DENIED)
+
+    # 소프트 삭제된 자원에 연결된 파일은 발급 차단
+    if normalized_key in _collect_deleted_keys(db, workspace_id):
+        raise BusinessException(ErrorCode.FILE_NOT_FOUND)
 
     if not storage.file_exists(normalized_key):
         raise BusinessException(ErrorCode.FILE_NOT_FOUND)
@@ -261,10 +341,10 @@ def create_presigned_file_url(
     expires_at = now + timedelta(seconds=req.expires_in_seconds)
 
     download_name = normalized_key.rsplit("/", 1)[-1] if req.access_type == "DOWNLOAD" else None
-    presigned_url = storage.presigned_get_url(
+    presigned_url = storage.presigned_download_url(
         normalized_key,
-        expires_in_seconds=req.expires_in_seconds,
         download_name=download_name,
+        expires_in_seconds=req.expires_in_seconds,
     )
 
     access_log = FileAccessLog(

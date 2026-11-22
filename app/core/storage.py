@@ -1,6 +1,6 @@
 """S3 호환 파일 저장소 클라이언트 (로컬: SeaweedFS, 배포: AWS S3).
 
-파일은 서버끼리 주고받지 않고 key(경로)만 넘긴다.
+파일은 서버로 주고받지 않고 key(경로)만 넘긴다.
 브라우저는 presigned URL로 직접 업로드·다운로드한다.
 key 규칙(초안): {workspace_id}/{song_id}/...
 """
@@ -86,17 +86,21 @@ def presigned_upload_url(key: str, content_type: str) -> str:
     )
 
 
-def presigned_download_url(key: str, download_name: str | None = None) -> str:
+def presigned_download_url(
+    key: str,
+    download_name: str | None = None,
+    *,
+    expires_in_seconds: int | None = None,
+) -> str:
     """download_name을 주면 브라우저가 그 이름으로 내려받는다 (attachment)."""
     s = get_settings()
-    params = {"Bucket": s.s3_bucket, "Key": key}
+    params: dict[str, str] = {"Bucket": s.s3_bucket, "Key": key}
     if download_name is not None:
         params["ResponseContentDisposition"] = (
             f"attachment; filename*=UTF-8''{quote(download_name)}"
         )
-    return _get_public_s3().generate_presigned_url(
-        "get_object", Params=params, ExpiresIn=s.s3_presigned_expires_seconds
-    )
+    expires = expires_in_seconds or s.s3_presigned_expires_seconds
+    return _get_public_s3().generate_presigned_url("get_object", Params=params, ExpiresIn=expires)
 
 
 def file_exists(key: str) -> bool:
@@ -111,18 +115,13 @@ def file_exists(key: str) -> bool:
         raise
 
 
-def presigned_get_url(
-    key: str,
-    *,
-    expires_in_seconds: int | None = None,
-    download_name: str | None = None,
-) -> str:
-    """유효기간(초)과 다운로드 파일명(선택)을 지정해 Presigned GET URL을 생성한다."""
-    s = get_settings()
-    params: dict[str, str] = {"Bucket": s.s3_bucket, "Key": key}
-    if download_name is not None:
-        params["ResponseContentDisposition"] = (
-            f"attachment; filename*=UTF-8''{quote(download_name)}"
-        )
-    expires = expires_in_seconds or s.s3_presigned_expires_seconds
-    return _get_public_s3().generate_presigned_url("get_object", Params=params, ExpiresIn=expires)
+def object_size(key: str) -> int:
+    """저장소 객체의 바이트 크기를 반환한다. 존재하지 않으면 0."""
+    try:
+        head = get_s3().head_object(Bucket=get_settings().s3_bucket, Key=key)
+        return int(head.get("ContentLength", 0))
+    except ClientError as exc:
+        code = str(exc.response.get("Error", {}).get("Code", ""))
+        if code in ("404", "NoSuchKey", "NotFound"):
+            return 0
+        raise

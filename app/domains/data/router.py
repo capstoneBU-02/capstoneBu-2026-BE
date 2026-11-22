@@ -5,7 +5,6 @@ from app.core.database import get_db
 from app.core.response import ApiResponse
 from app.domains.data import service
 from app.domains.data.schemas import (
-    DataTabDownloadResponse,
     PresignedUrlRequest,
     PresignedUrlResponse,
     TaskDetailResponse,
@@ -14,22 +13,6 @@ from app.domains.data.schemas import (
 from app.domains.processing.sources import get_current_workspace_id
 
 router = APIRouter(tags=["data"])
-
-
-@router.get(
-    "/tabs/{tab_id}/download",
-    response_model=ApiResponse[DataTabDownloadResponse],
-)
-def download_tab(
-    tab_id: int,
-    file_format: str = Query("musicxml", alias="format"),
-    page_option: str = Query("all"),
-    db: Session = Depends(get_db),
-    workspace_id: int = Depends(get_current_workspace_id),
-) -> ApiResponse[DataTabDownloadResponse]:
-    """DATA-01: 생성 완료된 타브 악보의 보안 다운로드 링크를 발급한다."""
-    data = service.get_tab_download(db, workspace_id, tab_id, file_format, page_option)
-    return ApiResponse.ok(data)
 
 
 @router.get(
@@ -42,7 +25,7 @@ def list_workspace_tasks(
     db: Session = Depends(get_db),
     workspace_id: int = Depends(get_current_workspace_id),
 ) -> ApiResponse[WorkspaceTaskListResponse]:
-    """DATA-02: 현재 워크스페이스에 보관된 이전 작업 내역을 조회한다."""
+    """DATA-02: 현재 워크스페이스의 보관된 이전 작업 이력을 조회한다."""
     data = service.list_workspace_tasks(db, workspace_id, page, limit)
     return ApiResponse.ok(data)
 

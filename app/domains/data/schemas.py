@@ -1,29 +1,21 @@
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
 from app.domains.data.models import AccessType
 
-
-class DataTabDownloadResponse(BaseModel):
-    """GET /api/v1/tabs/{tab_id}/download 응답 (DATA-01)."""
-
-    tab_id: int
-    segment_id: int
-    format: str
-    page_option: str = "all"
-    file_name: str
-    download_url: str
-    expires_at: datetime
+TaskType = Literal["tab", "stem", "comparison"]
 
 
 class WorkspaceTaskItem(BaseModel):
     """GET /api/v1/workspaces/tasks 목록 항목 (DATA-02)."""
 
     task_id: int
+    task_type: TaskType = "tab"
     segment_id: int
     track_id: int
-    parent_task_id: int | None
+    parent_task_id: int | None = None
     version: int
     track_filename: str
     start_sec: float
@@ -31,7 +23,7 @@ class WorkspaceTaskItem(BaseModel):
     target_part: str
     priority: str
     status: str
-    is_reused: bool
+    is_reused: bool = False
     created_at: datetime
 
 
@@ -69,7 +61,7 @@ class TaskDetailResponse(BaseModel):
     tuning_id: str
     capo: int
     status: str
-    is_reused: bool
+    is_reused: bool = False
     created_at: datetime
 
 
