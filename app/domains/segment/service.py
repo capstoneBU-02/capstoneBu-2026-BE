@@ -6,6 +6,7 @@ from app.core.exceptions import BusinessException, ErrorCode
 from app.domains.segment.models import Segment, SegmentHistory
 from app.domains.segment.schemas import (
     SegmentCreateRequest,
+    SegmentListResponse,
     SegmentResponse,
     SegmentUpdateRequest,
 )
@@ -185,3 +186,11 @@ def update_segment(
     except BusinessException:
         db.rollback()
         raise
+
+
+def list_segments(db: Session, track_id: int) -> SegmentListResponse:
+    """원곡의 구간 목록. 시작 시간순 (같으면 만든 순서). 소유권은 라우터에서 확인한다."""
+    segments = db.scalars(
+        select(Segment).where(Segment.track_id == track_id).order_by(Segment.start_ms, Segment.id)
+    ).all()
+    return SegmentListResponse(items=[build_segment_response(s) for s in segments])

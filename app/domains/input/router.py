@@ -8,7 +8,7 @@ from app.core.response import ApiResponse
 from app.domains.account.deps import get_current_workspace
 from app.domains.account.models import Workspace
 from app.domains.input import service
-from app.domains.input.schemas import TrackUploadResponse
+from app.domains.input.schemas import TrackListResponse, TrackResponse, TrackUploadResponse
 
 router = APIRouter(tags=["input"])
 
@@ -32,3 +32,22 @@ def upload_track(
         is_separated_stem=is_separated_stem,
     )
     return ApiResponse.ok(result)
+
+
+@router.get("/tracks", response_model=ApiResponse[TrackListResponse])
+def list_tracks(
+    workspace: Workspace = Depends(get_current_workspace),
+    db: Session = Depends(get_db),
+) -> ApiResponse[TrackListResponse]:
+    """내 워크스페이스의 원곡 목록 (최근에 올린 곡부터, 구간 수 포함)."""
+    return ApiResponse.ok(service.list_tracks(db, workspace.id))
+
+
+@router.get("/tracks/{track_id}", response_model=ApiResponse[TrackResponse])
+def get_track(
+    track_id: int,
+    workspace: Workspace = Depends(get_current_workspace),
+    db: Session = Depends(get_db),
+) -> ApiResponse[TrackResponse]:
+    """원곡 상세. 없거나 다른 워크스페이스 곡이면 404 TRACK_NOT_FOUND."""
+    return ApiResponse.ok(service.get_track(db, workspace.id, track_id))

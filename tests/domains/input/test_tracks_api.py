@@ -144,3 +144,125 @@ def test_upload_file_too_large_returns_413(
     )
     assert res_large.status_code == 413
     assert res_large.json()["error"]["code"] == "FILE_TOO_LARGE"
+
+
+def _upload(client: TestClient, name: str) -> int:
+    res = client.post(
+        "/api/v1/tracks/upload",
+        files={"file": (name, b"dummy-" + name.encode(), "audio/mpeg")},
+    )
+    assert res.status_code == 201, res.text
+    return int(res.json()["data"]["track_id"])
+
+
+def _other_workspace_track(db: Session) -> Track:
+    other = Workspace(owner_type="TESTER_CODE")
+    db.add(other)
+    db.flush()
+    track = Track(
+        workspace_id=other.id,
+        filename="other.mp3",
+        media_type="audio/mpeg",
+        storage_key=f"{other.id}/tracks/other.mp3",
+        file_hash="otherhash",
+        duration_ms=60_000,
+        file_size_bytes=10,
+        is_separated_stem=False,
+    )
+    db.add(track)
+    db.commit()
+    return track
+
+
+def test_list_and_get_tracks(
+    client: TestClient,
+    db: Session,
+    authed_workspace: Workspace,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    assert client.get("/api/v1/tracks").json()["data"] == {"items": []}
+
+    _mock_audio_duration(monkeypatch, 120.0)
+    first = _upload(client, "first.mp3")
+    second = _upload(client, "second.mp3")
+    for start in (30_000, 0):
+        res = client.post(
+            f"/api/v1/tracks/{first}/segments", json={"start_ms": start, "end_ms": start + 10_000}
+        )
+        assert res.status_code == 201, res.text
+    _other_workspace_track(db)  # 다른 워크스페이스 곡은 목록에 나오지 않는다
+
+    items = client.get("/api/v1/tracks").json()["data"]["items"]
+    assert [(t["track_id"], t["segment_count"]) for t in items] == [(second, 0), (first, 2)]
+    assert items[1]["filename"] == "first.mp3" and items[1]["duration_ms"] == 120_000
+
+    detail = client.get(f"/api/v1/tracks/{first}").json()["data"]
+    assert detail == items[1]
+
+
+def test_track_of_other_workspace_is_not_found(
+    client: TestClient, db: Session, authed_workspace: Workspace
+) -> None:
+    other = _other_workspace_track(db)
+    for path in (
+        f"/api/v1/tracks/{other.id}",
+        f"/api/v1/tracks/{other.id}/segments",
+        "/api/v1/tracks/999999",
+    ):
+        res = client.get(path)
+        assert res.status_code == 404, path
+        assert res.json()["error"]["code"] == "TRACK_NOT_FOUND"
+
+
+def test_list_and_get_segments(
+    client: TestClient,
+    db: Session,
+    authed_workspace: Workspace,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _mock_audio_duration(monkeypatch, 120.0)
+    track_id = _upload(client, "song.mp3")
+    assert client.get(f"/api/v1/tracks/{track_id}/segments").json()["data"] == {"items": []}
+
+    ids = []
+    for start, name in ((40_000, "CHORUS"), (10_000, "VERSE")):
+        res = client.post(
+            f"/api/v1/tracks/{track_id}/segments",
+            json={"start_ms": start, "end_ms": start + 5_000, "name": name},
+        )
+        ids.append(res.json()["data"]["segment_id"])
+
+    items = client.get(f"/api/v1/tracks/{track_id}/segments").json()["data"]["items"]
+    assert [(s["segment_id"], s["start_ms"], s["name"]) for s in items] == [
+        (ids[1], 10_000, "VERSE"),
+        (ids[0], 40_000, "CHORUS"),
+    ]
+
+    detail = client.get(f"/api/v1/segments/{ids[0]}").json()["data"]
+    assert detail == items[1]
+    assert detail["duration_ms"] == 5_000
+
+
+def test_segment_of_other_workspace_is_not_found(
+    client: TestClient, db: Session, authed_workspace: Workspace
+) -> None:
+    from app.domains.segment.models import Segment
+
+    other = _other_workspace_track(db)
+    seg = Segment(track_id=other.id, start_ms=0, end_ms=1000, version=1)
+    db.add(seg)
+    db.commit()
+    for segment_id in (seg.id, 999999):
+        res = client.get(f"/api/v1/segments/{segment_id}")
+        assert res.status_code == 404
+        assert res.json()["error"]["code"] == "SEGMENT_NOT_FOUND"
+
+
+def test_lookup_requires_login(client: TestClient) -> None:
+    for path in (
+        "/api/v1/tracks",
+        "/api/v1/tracks/1",
+        "/api/v1/tracks/1/segments",
+        "/api/v1/segments/1",
+    ):
+        assert client.get(path).status_code == 401, path

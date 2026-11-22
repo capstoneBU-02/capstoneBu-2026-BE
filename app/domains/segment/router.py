@@ -13,6 +13,7 @@ from app.domains.segment import service
 from app.domains.segment.models import Segment
 from app.domains.segment.schemas import (
     SegmentCreateRequest,
+    SegmentListResponse,
     SegmentResponse,
     SegmentUpdateRequest,
 )
@@ -44,6 +45,48 @@ def get_verified_track(
         track_id=track.id,
         duration_ms=track.duration_ms,
     )
+
+
+def get_owned_segment(db: Session, workspace_id: int, segment_id: int) -> tuple[Segment, Track]:
+    """로그인한 워크스페이스의 구간과 그 원곡. 없거나 다른 워크스페이스면 SEGMENT_NOT_FOUND."""
+
+    segment = db.get(Segment, segment_id)
+
+    if segment is None:
+        raise BusinessException(ErrorCode.SEGMENT_NOT_FOUND)
+
+    track = db.get(Track, segment.track_id)
+
+    if track is None or track.workspace_id != workspace_id:
+        raise BusinessException(ErrorCode.SEGMENT_NOT_FOUND)
+
+    return segment, track
+
+
+@router.get(
+    "/tracks/{track_id}/segments",
+    response_model=ApiResponse[SegmentListResponse],
+)
+def list_segments(
+    db: Session = Depends(get_db),
+    track: VerifiedTrack = Depends(get_verified_track),
+) -> ApiResponse[SegmentListResponse]:
+    """원곡의 구간 목록 (시작 시간순). 다른 워크스페이스 곡이면 404 TRACK_NOT_FOUND."""
+    return ApiResponse.ok(service.list_segments(db, track.track_id))
+
+
+@router.get(
+    "/segments/{segment_id}",
+    response_model=ApiResponse[SegmentResponse],
+)
+def get_segment(
+    segment_id: int,
+    db: Session = Depends(get_db),
+    workspace: Workspace = Depends(get_current_workspace),
+) -> ApiResponse[SegmentResponse]:
+    """구간 상세. 없거나 다른 워크스페이스 구간이면 404 SEGMENT_NOT_FOUND."""
+    segment, _ = get_owned_segment(db, workspace.id, segment_id)
+    return ApiResponse.ok(service.build_segment_response(segment))
 
 
 @router.post(
@@ -78,15 +121,7 @@ def update_segment(
 ) -> ApiResponse[SegmentResponse]:
     """로그인한 워크스페이스의 구간 범위·이름을 수정한다."""
 
-    segment = db.get(Segment, segment_id)
-
-    if segment is None:
-        raise BusinessException(ErrorCode.SEGMENT_NOT_FOUND)
-
-    track = db.get(Track, segment.track_id)
-
-    if track is None or track.workspace_id != workspace.id:
-        raise BusinessException(ErrorCode.SEGMENT_NOT_FOUND)
+    _, track = get_owned_segment(db, workspace.id, segment_id)
 
     result = service.update_segment(
         db=db,
