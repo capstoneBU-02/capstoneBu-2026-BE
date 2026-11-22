@@ -24,10 +24,10 @@ class PerformanceSource:
     workspace_id: int
     track_id: int
     segment_id: int
-    start_ms: int
+    start_ms: int  # 녹음 당시 구간 범위
     end_ms: int
-    storage_key: str
-    file_hash: str
+    storage_key: str  # 연주 파일 경로
+    file_hash: str  # input_hash 계산용
 
 
 def load_performance(
@@ -35,7 +35,10 @@ def load_performance(
     workspace_id: int,
     performance_id: int,
 ) -> PerformanceSource:
-    """워크스페이스 소유의 연주를 조회한다."""
+    """워크스페이스 소유의 연주를 조회한다.
+
+    없거나 다른 워크스페이스 소유면 PERFORMANCE_NOT_FOUND.
+    """
 
     performance = db.scalar(
         select(Performance).where(
@@ -60,7 +63,10 @@ def load_performance(
 
 
 def find_latest_tab_id(db: Session, stem_id: int) -> int | None:
-    """그 기타 음원으로 만든 최신 완료 타브 (success·needs_review, 삭제 제외)."""
+    """그 기타 음원으로 만든 최신 완료 타브 (success·needs_review, 삭제 제외).
+
+    없으면 타브 없이 비교한다 (기준 타브는 결과 화면 표시용).
+    """
 
     return db.scalar(
         select(Tab.id)

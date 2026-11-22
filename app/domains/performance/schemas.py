@@ -16,7 +16,6 @@ class PerformanceCreateResponse(BaseModel):
     track_id: int
     segment_id: int
     source: PerformanceSource
-    storage_key: str
     start_ms: int
     end_ms: int
     created_at: datetime
@@ -30,7 +29,6 @@ class PerformanceListItem(BaseModel):
     performance_id: int
     track_id: int
     source: PerformanceSource
-    storage_key: str
     start_ms: int
     end_ms: int
     created_at: datetime
