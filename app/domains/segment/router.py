@@ -10,9 +10,9 @@ from app.domains.account.deps import get_current_workspace
 from app.domains.account.models import Workspace
 from app.domains.input.models import Track
 from app.domains.segment import service
-from app.domains.segment.models import Segment
 from app.domains.segment.schemas import (
     SegmentCreateRequest,
+    SegmentListResponse,
     SegmentResponse,
     SegmentUpdateRequest,
 )
@@ -44,6 +44,32 @@ def get_verified_track(
         track_id=track.id,
         duration_ms=track.duration_ms,
     )
+
+
+@router.get(
+    "/tracks/{track_id}/segments",
+    response_model=ApiResponse[SegmentListResponse],
+)
+def list_segments(
+    track_id: int,
+    db: Session = Depends(get_db),
+    workspace: Workspace = Depends(get_current_workspace),
+) -> ApiResponse[SegmentListResponse]:
+    """원곡의 구간 목록 (시작 시간순). 다른 워크스페이스 곡이면 404 TRACK_NOT_FOUND."""
+    return ApiResponse.ok(service.list_segments(db, workspace.id, track_id))
+
+
+@router.get(
+    "/segments/{segment_id}",
+    response_model=ApiResponse[SegmentResponse],
+)
+def get_segment(
+    segment_id: int,
+    db: Session = Depends(get_db),
+    workspace: Workspace = Depends(get_current_workspace),
+) -> ApiResponse[SegmentResponse]:
+    """구간 상세. 없거나 다른 워크스페이스 구간이면 404 SEGMENT_NOT_FOUND."""
+    return ApiResponse.ok(service.get_segment(db, workspace.id, segment_id))
 
 
 @router.post(
@@ -78,15 +104,7 @@ def update_segment(
 ) -> ApiResponse[SegmentResponse]:
     """로그인한 워크스페이스의 구간 범위·이름을 수정한다."""
 
-    segment = db.get(Segment, segment_id)
-
-    if segment is None:
-        raise BusinessException(ErrorCode.SEGMENT_NOT_FOUND)
-
-    track = db.get(Track, segment.track_id)
-
-    if track is None or track.workspace_id != workspace.id:
-        raise BusinessException(ErrorCode.SEGMENT_NOT_FOUND)
+    _, track = service.get_owned_segment(db, workspace.id, segment_id)
 
     result = service.update_segment(
         db=db,

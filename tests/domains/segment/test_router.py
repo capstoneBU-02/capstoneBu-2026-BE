@@ -22,10 +22,10 @@ def test_create_segment_route_exists() -> None:
         route
         for route in router.routes
         if getattr(route, "path", None) == "/tracks/{track_id}/segments"
+        and "POST" in getattr(route, "methods", set())
     ]
 
     assert len(routes) == 1
-    assert "POST" in routes[0].methods
     assert routes[0].status_code == 201
 
 
@@ -205,8 +205,10 @@ def test_verified_track_rejects_other_workspace() -> None:
 
 def test_update_segment_route_exists() -> None:
     routes = [
-        route for route in router.routes if getattr(route, "path", None) == "/segments/{segment_id}"
+        route
+        for route in router.routes
+        if getattr(route, "path", None) == "/segments/{segment_id}"
+        and "PATCH" in getattr(route, "methods", set())
     ]
 
     assert len(routes) == 1
-    assert "PATCH" in routes[0].methods

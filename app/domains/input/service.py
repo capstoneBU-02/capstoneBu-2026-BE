@@ -12,7 +12,8 @@ from app.core import storage
 from app.core.config import get_settings
 from app.core.exceptions import BusinessException, ErrorCode
 from app.domains.input.models import Track
-from app.domains.input.schemas import TrackUploadResponse
+from app.domains.input.schemas import TrackListResponse, TrackResponse, TrackUploadResponse
+from app.domains.segment.models import Segment
 
 ALLOWED_EXTENSIONS = {".mp3", ".mp4"}
 ALLOWED_MIME_TYPES = {"audio/mpeg", "audio/mp3", "video/mp4", "audio/mp4"}
@@ -117,3 +118,44 @@ def get_owned_track(db: Session, workspace_id: int, track_id: int) -> Track:
     if track is None:
         raise BusinessException(ErrorCode.TRACK_NOT_FOUND)
     return track
+
+
+def _segment_counts(db: Session, track_ids: list[int]) -> dict[int, int]:
+    """원곡별 구간 수."""
+    if not track_ids:
+        return {}
+    rows = db.execute(
+        select(Segment.track_id, func.count(Segment.id))
+        .where(Segment.track_id.in_(track_ids))
+        .group_by(Segment.track_id)
+    ).all()
+    return {track_id: int(count) for track_id, count in rows}
+
+
+def _track_response(track: Track, segment_count: int) -> TrackResponse:
+    return TrackResponse(
+        track_id=track.id,
+        filename=track.filename,
+        duration_ms=track.duration_ms,
+        media_type=track.media_type,
+        is_separated_stem=track.is_separated_stem,
+        segment_count=segment_count,
+        created_at=track.created_at,
+    )
+
+
+def list_tracks(db: Session, workspace_id: int) -> TrackListResponse:
+    """내 워크스페이스의 원곡 목록. 최근에 올린 곡부터."""
+    tracks = db.scalars(
+        select(Track)
+        .where(Track.workspace_id == workspace_id)
+        .order_by(Track.created_at.desc(), Track.id.desc())
+    ).all()
+    counts = _segment_counts(db, [t.id for t in tracks])
+    return TrackListResponse(items=[_track_response(t, counts.get(t.id, 0)) for t in tracks])
+
+
+def get_track(db: Session, workspace_id: int, track_id: int) -> TrackResponse:
+    """원곡 상세. 없거나 다른 워크스페이스 곡이면 TRACK_NOT_FOUND."""
+    track = get_owned_track(db, workspace_id, track_id)
+    return _track_response(track, _segment_counts(db, [track.id]).get(track.id, 0))
