@@ -74,6 +74,17 @@ class Settings(BaseSettings):
     ai_align_timeout_sec: int = 120
     ai_compare_transcription_timeout_sec: int = 300
     ai_compare_timeout_sec: int = 60
+    # 연주 비교 판정 기준. D16 확정 전 초기값 (AI 설계서 11장)
+    ai_compare_min_length_ratio: float = 0.5  # 내 연주가 구간의 이 비율 미만이면 다시 녹음
+    ai_compare_max_length_ratio: float = 2.0
+    ai_compare_min_active_ratio: float = 0.2  # 소리 나는 부분이 이 비율 미만이면 다시 녹음
+    ai_compare_min_note_ratio: float = 0.5  # 인식 음 수가 기준의 이 비율 미만이면 다시 녹음
+    ai_compare_slow_slope: float = 1.1  # DTW 평균 기울기가 이 이상이면 전체적으로 느림
+    ai_compare_max_tempo_ratio: float = 1.5  # 기울기가 이 배 밖이면 비교할 수 없음
+    ai_compare_match_window_ms: int = 150  # 정렬한 위치에서 이 범위 안의 음을 같은 음으로 본다
+    ai_compare_timing_ms: int = 100  # 평균 빠르기를 뺀 어긋남이 이보다 크면 타이밍 차이
+    ai_compare_min_match_rate: float = 0.3  # 짝을 찾은 기준 음이 이 비율 미만이면 비교할 수 없음
+    ai_compare_region_merge_ms: int = 300  # 같은 종류 구간이 이 간격 이내면 하나로 합친다
 
     # 타브(TAB). 제한 시간은 D12 확정 전 초기값
     ai_tab_transcription_timeout_sec: int = 300
