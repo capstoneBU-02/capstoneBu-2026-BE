@@ -1,19 +1,14 @@
-"""refactor_data
+"""rename access_id to log_id and add file_key index
 
 Revision ID: 80c6f1e82cd0
-Revises: c8a1f3e92014
-Create Date: 2026-11-23 01:41:53.682962
-
+Revises: c8a1f3e92014, 9c0b8c721792
+Create Date: ...
 """
-
-from collections.abc import Sequence
 
 from alembic import op
 
 revision: str = "80c6f1e82cd0"
-down_revision: str | None = "c8a1f3e92014"
-branch_labels: str | Sequence[str] | None = None
-depends_on: str | Sequence[str] | None = None
+down_revision: str | tuple[str, ...] | None = ("c8a1f3e92014", "9c0b8c721792")
 
 
 def upgrade() -> None:

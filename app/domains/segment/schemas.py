@@ -68,3 +68,9 @@ class SegmentResponse(BaseModel):
     version: int
     created_at: datetime
     updated_at: datetime
+
+
+class SegmentListResponse(BaseModel):
+    """GET /tracks/{track_id}/segments 응답. 시작 시간순."""
+
+    items: list[SegmentResponse]

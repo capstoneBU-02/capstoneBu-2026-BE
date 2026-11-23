@@ -1,7 +1,6 @@
-import importlib
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import func, inspect, select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.core import storage
@@ -19,16 +18,12 @@ from app.domains.data.schemas import (
     WorkspaceTaskListResponse,
 )
 from app.domains.input.models import Track
+from app.domains.performance.models import Performance
 from app.domains.processing.models import Stem, StemStageResult
 from app.domains.segment.models import Segment
 from app.domains.tab import keys as tab_keys
 from app.domains.tab.models import DONE_STATUSES as TAB_DONE_STATUSES
 from app.domains.tab.models import Tab, TabStageResult
-
-try:
-    Performance = importlib.import_module("app.domains.performance.models").Performance
-except ImportError:  # REC(#70) 머지 전 브랜치 호환
-    Performance = None
 
 
 def _workspace_prefix(workspace_id: int) -> str:
@@ -122,13 +117,12 @@ def _calculate_workspace_storage_bytes(db: Session, workspace_id: int) -> int:
         if stem.part_keys:
             object_keys.update(stem.part_keys.values())
 
-    if Performance is not None and inspect(db.get_bind()).has_table("performances"):
-        performances = db.scalars(
-            select(Performance).where(Performance.workspace_id == workspace_id)
-        ).all()
-        for perf in performances:
-            if perf.storage_key:
-                object_keys.add(perf.storage_key)
+    performances = db.scalars(
+        select(Performance).where(Performance.workspace_id == workspace_id)
+    ).all()
+    for perf in performances:
+        if perf.storage_key:
+            object_keys.add(perf.storage_key)
 
     active_tabs = db.scalars(
         select(Tab).where(

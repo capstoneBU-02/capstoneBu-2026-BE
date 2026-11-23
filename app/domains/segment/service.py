@@ -3,9 +3,11 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.core.exceptions import BusinessException, ErrorCode
+from app.domains.input.models import Track
 from app.domains.segment.models import Segment, SegmentHistory
 from app.domains.segment.schemas import (
     SegmentCreateRequest,
+    SegmentListResponse,
     SegmentResponse,
     SegmentUpdateRequest,
 )
@@ -185,3 +187,31 @@ def update_segment(
     except BusinessException:
         db.rollback()
         raise
+
+
+def get_owned_segment(db: Session, workspace_id: int, segment_id: int) -> tuple[Segment, Track]:
+    """로그인한 워크스페이스의 구간과 그 원곡. 없거나 다른 워크스페이스면 SEGMENT_NOT_FOUND."""
+    segment = db.get(Segment, segment_id)
+    if segment is None:
+        raise BusinessException(ErrorCode.SEGMENT_NOT_FOUND)
+    track = db.get(Track, segment.track_id)
+    if track is None or track.workspace_id != workspace_id:
+        raise BusinessException(ErrorCode.SEGMENT_NOT_FOUND)
+    return segment, track
+
+
+def get_segment(db: Session, workspace_id: int, segment_id: int) -> SegmentResponse:
+    """구간 상세. 없거나 다른 워크스페이스 구간이면 SEGMENT_NOT_FOUND."""
+    segment, _ = get_owned_segment(db, workspace_id, segment_id)
+    return build_segment_response(segment)
+
+
+def list_segments(db: Session, workspace_id: int, track_id: int) -> SegmentListResponse:
+    """원곡의 구간 목록. 시작 시간순 (같으면 만든 순서). 남의 곡이면 TRACK_NOT_FOUND."""
+    track = db.get(Track, track_id)
+    if track is None or track.workspace_id != workspace_id:
+        raise BusinessException(ErrorCode.TRACK_NOT_FOUND)
+    segments = db.scalars(
+        select(Segment).where(Segment.track_id == track_id).order_by(Segment.start_ms, Segment.id)
+    ).all()
+    return SegmentListResponse(items=[build_segment_response(s) for s in segments])
