@@ -85,6 +85,11 @@ class Settings(BaseSettings):
     ai_compare_timing_ms: int = 100  # 평균 빠르기를 뺀 어긋남이 이보다 크면 타이밍 차이
     ai_compare_min_match_rate: float = 0.3  # 짝을 찾은 기준 음이 이 비율 미만이면 비교할 수 없음
     ai_compare_region_merge_ms: int = 300  # 같은 종류 구간이 이 간격 이내면 하나로 합친다
+    # 두 음 confidence 평균이 이 값 미만이면 판단 보류.
+    # 분리 음원은 신뢰도가 낮게 나와 타브(0.4)보다 낮춘다
+    ai_compare_low_confidence: float = 0.3
+    # 기준 음 중 low_confidence(ai_low_confidence 미만) 비율이 이 이상이면 비교할 수 없음
+    ai_compare_max_low_confidence_ratio: float = 0.5
 
     # 타브(TAB). 제한 시간은 D12 확정 전 초기값
     ai_tab_transcription_timeout_sec: int = 300
