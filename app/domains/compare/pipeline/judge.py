@@ -36,6 +36,7 @@ RERECORD_TOO_QUIET = "RERECORD_TOO_QUIET"
 RERECORD_FEW_NOTES = "RERECORD_FEW_NOTES"
 LOW_MATCH_RATE = "LOW_MATCH_RATE"
 TEMPO_OUT_OF_RANGE = "TEMPO_OUT_OF_RANGE"
+REFERENCE_LOW_CONFIDENCE = "REFERENCE_LOW_CONFIDENCE"
 LOW_CONFIDENCE = "LOW_CONFIDENCE"
 UNCLEAR_ALIGNMENT = "UNCLEAR_ALIGNMENT"
 
@@ -185,6 +186,8 @@ def judge(alignment: AlignmentResult, notes: NotesResult, settings: Settings) ->
     ref_notes = notes.reference
     if not alignment.path or not ref_notes:
         return JudgeResult(not_comparable_reason=LOW_MATCH_RATE)
+    if reference_unreliable(ref_notes, settings):
+        return JudgeResult(not_comparable_reason=REFERENCE_LOW_CONFIDENCE)
     low, high = 1 / settings.ai_compare_max_tempo_ratio, settings.ai_compare_max_tempo_ratio
     if not low <= alignment.slope <= high:
         return JudgeResult(not_comparable_reason=TEMPO_OUT_OF_RANGE)
@@ -201,7 +204,14 @@ def judge(alignment: AlignmentResult, notes: NotesResult, settings: Settings) ->
 
     if matched / len(ref_notes) < settings.ai_compare_min_match_rate:
         return JudgeResult(not_comparable_reason=LOW_MATCH_RATE)
-    return JudgeResult(regions=_merge(issues, settings.ai_compare_region_merge_ms))
+    merged = _merge(issues, settings.ai_compare_region_merge_ms)
+    return JudgeResult(regions=resolve_overlaps(merged))
+
+
+def reference_unreliable(ref_notes: Sequence[Note], settings: Settings) -> bool:
+    """기준 음 자체를 믿기 어려운지. 타브의 LOW_CONFIDENCE_NOTES와 같은 기준이다."""
+    low = sum(n.confidence < settings.ai_low_confidence for n in ref_notes)
+    return low / len(ref_notes) >= settings.ai_compare_max_low_confidence_ratio
 
 
 def _judge_note(
@@ -225,13 +235,15 @@ def _judge_note(
     slope_here = mapping.local_slope(ref.start_ms)
     if not UNCLEAR_SLOPE[0] <= slope_here <= UNCLEAR_SLOPE[1]:
         return issue(RegionType.UNAVAILABLE, UNCLEAR_ALIGNMENT), bool(candidates)
+    threshold = settings.ai_compare_low_confidence
     if not candidates:
-        if ref.confidence < settings.ai_low_confidence:
+        if ref.confidence < threshold:
             return issue(RegionType.UNAVAILABLE, LOW_CONFIDENCE), False
         return issue(RegionType.MISSING_NOTE), False
 
     best = min(candidates, key=lambda p: abs(p.start_ms - mapped))
-    if min(ref.confidence, best.confidence) < settings.ai_low_confidence:
+    # 한쪽만 조금 낮아도 보류가 쏟아지지 않도록 두 음의 평균으로 본다
+    if (ref.confidence + best.confidence) / 2 < threshold:
         return issue(RegionType.UNAVAILABLE, LOW_CONFIDENCE), True
     if not same:
         return issue(RegionType.PITCH_DIFFERENCE), True
@@ -242,17 +254,18 @@ def _judge_note(
 
 
 def _merge(issues: Sequence[_Issue], gap_ms: int) -> list[Region]:
-    """같은 종류·같은 이유의 구간이 gap_ms 이내로 이어지면 하나로 합친다."""
+    """같은 종류·같은 이유의 구간이 gap_ms 이내로 이어지면 하나로 합친다.
+
+    사이에 다른 종류 구간이 끼어 있어도 합친다. 겹치는 부분은 resolve_overlaps가 정리한다.
+    """
     regions: list[Region] = []
+    latest: dict[tuple[str, str | None], int] = {}  # (종류, 이유) → regions에서 마지막 위치
     for item in sorted(issues, key=lambda i: (i.ref.start_ms, i.type)):
-        last = regions[-1] if regions else None
-        if (
-            last is not None
-            and last.type == item.type
-            and last.reason == item.reason
-            and item.ref.start_ms - last.end_ms <= gap_ms
-        ):
-            regions[-1] = Region(
+        key = (str(item.type), item.reason)
+        index = latest.get(key)
+        if index is not None and item.ref.start_ms - regions[index].end_ms <= gap_ms:
+            last = regions[index]
+            regions[index] = Region(
                 type=last.type,
                 start_ms=last.start_ms,
                 end_ms=max(last.end_ms, item.ref.end_ms),
@@ -261,6 +274,7 @@ def _merge(issues: Sequence[_Issue], gap_ms: int) -> list[Region]:
                 reason=last.reason,
             )
             continue
+        latest[key] = len(regions)
         regions.append(
             Region(
                 type=str(item.type),
@@ -272,3 +286,59 @@ def _merge(issues: Sequence[_Issue], gap_ms: int) -> list[Region]:
             )
         )
     return regions
+
+
+# 겹치면 앞쪽 종류를 남긴다. 확실한 차이를 판단 보류보다 먼저 보여 준다.
+PRIORITY = (
+    RegionType.PITCH_DIFFERENCE,
+    RegionType.MISSING_NOTE,
+    RegionType.TIMING_DIFFERENCE,
+    RegionType.UNAVAILABLE,
+)
+
+
+def resolve_overlaps(regions: Sequence[Region]) -> list[Region]:
+    """기준 시간축에서 구간이 겹치지 않게 한다.
+
+    우선순위가 높은 구간을 먼저 두고, 낮은 구간은 겹친 부분을 잘라 낸다. 다 덮이면 없앤다.
+    """
+    order = {str(kind): rank for rank, kind in enumerate(PRIORITY)}
+    kept: list[Region] = []
+    for region in sorted(regions, key=lambda r: (order.get(r.type, len(order)), r.start_ms)):
+        pieces = [region]
+        for higher in kept:
+            pieces = [part for piece in pieces for part in _subtract(piece, higher)]
+        kept.extend(pieces)
+    return sorted(kept, key=lambda r: (r.start_ms, r.end_ms))
+
+
+def _subtract(region: Region, other: Region) -> list[Region]:
+    """region에서 other와 겹친 부분을 뺀 나머지 (0~2개)."""
+    if other.end_ms <= region.start_ms or other.start_ms >= region.end_ms:
+        return [region]
+    parts = []
+    if region.start_ms < other.start_ms:
+        parts.append(_slice(region, region.start_ms, other.start_ms))
+    if other.end_ms < region.end_ms:
+        parts.append(_slice(region, other.end_ms, region.end_ms))
+    return parts
+
+
+def _slice(region: Region, start_ms: int, end_ms: int) -> Region:
+    """기준 시간 일부만 남기고, 연주 시간은 같은 비율로 자른다."""
+    span = region.end_ms - region.start_ms
+    perf_span = region.performance_end_ms - region.performance_start_ms
+
+    def perf(ms: int) -> int:
+        if span <= 0:
+            return region.performance_start_ms
+        return round(region.performance_start_ms + perf_span * (ms - region.start_ms) / span)
+
+    return Region(
+        type=region.type,
+        start_ms=start_ms,
+        end_ms=end_ms,
+        performance_start_ms=perf(start_ms),
+        performance_end_ms=perf(end_ms),
+        reason=region.reason,
+    )

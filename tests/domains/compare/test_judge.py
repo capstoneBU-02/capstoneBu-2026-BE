@@ -95,10 +95,73 @@ def test_small_timing_error_is_allowed() -> None:
 
 
 def test_low_confidence_is_unavailable_not_difference() -> None:
-    perf = list(REF)
+    ref, perf = list(REF), list(REF)
+    ref[4] = note(REF[4].start_ms, REF[4].pitch, confidence=0.3)
     perf[4] = note(REF[4].start_ms, REF[4].pitch + 1, confidence=0.2)
 
-    assert kinds(run(REF, perf)) == [("unavailable", REF[4].start_ms, "LOW_CONFIDENCE")]
+    assert kinds(run(ref, perf)) == [("unavailable", REF[4].start_ms, "LOW_CONFIDENCE")]
+
+
+def test_one_low_side_is_judged_by_average() -> None:
+    """한쪽만 낮아도 평균이 기준 이상이면 보류하지 않고 판정한다."""
+    perf = list(REF)
+    perf[4] = note(REF[4].start_ms, REF[4].pitch + 1, confidence=0.2)  # 평균 0.55
+
+    assert kinds(run(REF, perf)) == [("pitch_difference", REF[4].start_ms, None)]
+
+
+def test_unreliable_reference_is_not_comparable() -> None:
+    """기준 음의 절반 이상이 low_confidence면 그 기준으로는 비교하지 않는다."""
+    ref = [note(n.start_ms, n.pitch, confidence=0.35 if i % 2 else 0.9) for i, n in enumerate(REF)]
+
+    result = run(ref, list(ref))
+
+    assert (result.not_comparable_reason, result.regions) == ("REFERENCE_LOW_CONFIDENCE", [])
+
+
+def test_few_unreliable_reference_notes_are_compared() -> None:
+    ref = [note(n.start_ms, n.pitch, confidence=0.35 if i < 3 else 0.9) for i, n in enumerate(REF)]
+
+    assert run(ref, list(ref)).not_comparable_reason is None
+
+
+def test_difference_hides_overlapping_unavailable() -> None:
+    """타이밍 차이 구간 안에 판단 보류가 끼면 차이만 남긴다."""
+    dense = [note(1000 + i * 250, 60 + i) for i in range(8)]  # 2번과 4번 차이가 합쳐질 만큼 촘촘히
+    ref, perf = list(dense), list(dense)
+    perf[2] = note(dense[2].start_ms + 130, dense[2].pitch)
+    perf[4] = note(dense[4].start_ms + 130, dense[4].pitch)
+    ref[3] = note(dense[3].start_ms, dense[3].pitch, confidence=0.2)
+    perf[3] = note(dense[3].start_ms, dense[3].pitch, confidence=0.2)
+
+    result = run(ref, perf)
+
+    assert kinds(result) == [("timing_difference", dense[2].start_ms, None)]
+    assert result.regions[0].end_ms == dense[4].end_ms
+
+
+def test_overlap_cuts_lower_priority_region() -> None:
+    unavailable = judge.Region("unavailable", 1000, 2000, 1000, 3000, "LOW_CONFIDENCE")
+    pitch = judge.Region("pitch_difference", 1400, 1600, 1800, 2200)
+
+    result = judge.resolve_overlaps([unavailable, pitch])
+
+    assert [
+        (r.type, r.start_ms, r.end_ms, r.performance_start_ms, r.performance_end_ms) for r in result
+    ] == [
+        ("unavailable", 1000, 1400, 1000, 1800),
+        ("pitch_difference", 1400, 1600, 1800, 2200),
+        ("unavailable", 1600, 2000, 2200, 3000),
+    ]
+
+
+def test_regions_never_overlap() -> None:
+    perf = [note(n.start_ms + (130 if i % 2 else 0), n.pitch + (i == 3)) for i, n in enumerate(REF)]
+    ref = [note(n.start_ms, n.pitch, confidence=0.2 if i == 4 else 0.9) for i, n in enumerate(REF)]
+
+    regions = run(ref, perf).regions
+
+    assert all(a.end_ms <= b.start_ms for a, b in zip(regions, regions[1:], strict=False))
 
 
 def test_missing_low_confidence_reference_is_unavailable() -> None:
