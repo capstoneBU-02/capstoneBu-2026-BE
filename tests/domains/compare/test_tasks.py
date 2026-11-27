@@ -122,7 +122,8 @@ def test_rerecord_at_align_ends_not_comparable(
         ("transcription", "skipped"),
         ("compare", "skipped"),
     ]
-    assert service.get_result(db, WS, c.id).regions == []
+    res = service.get_result(db, WS, c.id)
+    assert (res.regions, res.overall_tempo) == ([], None)  # 정렬 전에 끝나 전체 빠르기 없음
 
 
 def test_not_comparable_from_judge(

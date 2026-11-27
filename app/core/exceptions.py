@@ -105,11 +105,6 @@ class ErrorCode(Enum):
     SEPARATION_NO_GUITAR = (422, "SEPARATION_NO_GUITAR", "음원에서 기타 소리를 찾지 못했습니다.")
     SEPARATION_UNCLEAR = (422, "SEPARATION_UNCLEAR", "기타 소리가 충분히 분리되지 않았습니다.")
     TAB_NO_NOTES = (422, "TAB_NO_NOTES", "인식된 음이 없습니다.")
-    TAB_LOW_CONFIDENCE = (
-        422,
-        "TAB_LOW_CONFIDENCE",
-        "인식 신뢰도가 낮아 결과가 부정확할 수 있습니다.",
-    )
     AI_WORKER_TIMEOUT = (
         504,
         "AI_WORKER_TIMEOUT",

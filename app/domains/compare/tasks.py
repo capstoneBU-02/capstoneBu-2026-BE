@@ -301,10 +301,11 @@ def align_work(db: Session, c: Comparison, tmp: Path) -> StageOutcome:
     key = keys.alignment_key(c)
     storage.put_bytes(key, contract.to_json(res), JSON)
     if res.rerecord_reason:
+        # 정렬 전에 끝났으므로 전체 빠르기는 없다 (overall_tempo null)
         return StageOutcome(
             output_key=key,
             not_comparable_reason=res.rerecord_reason,
-            result_key=_write_result(c, res),
+            result_key=_write_result(c, None),
         )
     return StageOutcome(output_key=key)
 
