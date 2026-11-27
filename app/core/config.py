@@ -35,7 +35,7 @@ class Settings(BaseSettings):
     s3_presigned_expires_seconds: int = 900
 
     # AI 파이프라인 (env: AI_*). 모델 이름·임계값은 코드에 하드코딩하지 않고 여기서 읽는다.
-    ai_config_version: str = "2026-11-19"  # 결과 재현용. 모델·임계값을 바꾸면 함께 올린다
+    ai_config_version: str = "2026-11-27"  # 결과 재현용. 모델·임계값을 바꾸면 함께 올린다
     ai_separation_model: str = "BS-Roformer-SW.ckpt"
     ai_separation_fallback: str = "htdemucs_6s"
     ai_transcription_weights: str = "icassp2022-onnx"  # basic-pitch. 미세조정 시 ft-YYYYMMDD
@@ -80,7 +80,8 @@ class Settings(BaseSettings):
     ai_compare_min_active_ratio: float = 0.2  # 소리 나는 부분이 이 비율 미만이면 다시 녹음
     ai_compare_min_note_ratio: float = 0.5  # 인식 음 수가 기준의 이 비율 미만이면 다시 녹음
     ai_compare_slow_slope: float = 1.1  # DTW 평균 기울기가 이 이상이면 전체적으로 느림
-    ai_compare_max_tempo_ratio: float = 1.5  # 기울기가 이 배 밖이면 비교할 수 없음
+    # 기울기가 이 배 밖이면 비교할 수 없음. 절반 속도 연습까지 비교한다 (길이 검사 0.5~2배와 같음)
+    ai_compare_max_tempo_ratio: float = 2.0
     ai_compare_match_window_ms: int = 150  # 정렬한 위치에서 이 범위 안의 음을 같은 음으로 본다
     ai_compare_timing_ms: int = 100  # 평균 빠르기를 뺀 어긋남이 이보다 크면 타이밍 차이
     ai_compare_min_match_rate: float = 0.3  # 짝을 찾은 기준 음이 이 비율 미만이면 비교할 수 없음

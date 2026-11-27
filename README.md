@@ -218,9 +218,9 @@ GPU 태스크는 `@celery_app.task(queue="gpu")`로 지정합니다. 작업 상�
 | 기타 분리 | 기타 스템이 입력보다 30dB 이상 작음 | failed (재시도 불가) | `SEPARATION_NO_GUITAR` |
 | 기타 분리 | 유효 음 구간 10% 미만 | needs_review | `SEPARATION_UNCLEAR` |
 | 음 인식 | 인식된 음 0개 | failed | `TAB_NO_NOTES` |
-| 음 인식 | low_confidence 음이 50% 이상 | needs_review | `TAB_LOW_CONFIDENCE` |
-| 리듬 | 4/4가 아닌 박자로 추정 | needs_review | |
-| 타브 | `playable=False` 노트 있음 | needs_review | |
+| 음 인식 | low_confidence 음이 50% 이상 | needs_review | 이유 `LOW_CONFIDENCE_NOTES` |
+| 리듬 | 4/4가 아닌 박자로 추정 | needs_review | 이유 `NON_4_4_METER` |
+| 타브 | `playable=False` 노트 있음 | needs_review | 이유 `UNPLAYABLE_POSITIONS` |
 | 공통 | 시간 초과·워커 오류 | failed | `AI_WORKER_TIMEOUT` |
 
 확신이 없는 구간은 틀렸다고 표시하지 않고 **판단 보류**로 둡니다.
@@ -243,7 +243,7 @@ CI의 pytest는 판정 규칙과 파이프라인 동작만 검사하고 모델 �
 - **모델 이름·임계값은 하드코딩하지 않고** `get_settings().ai_*`에서 읽습니다. 값을 바꾸면 `AI_CONFIG_VERSION`도 함께 올립니다.
 - 모델 사전 로드는 `app/core/celery_app.py`의 `preload_ai_models` 훅에 연결합니다.
 - 공통 코드는 `core/`, 기능 코드는 `domains/<기능>/`에 둡니다. 파일 저장 key는 `{workspace_id}/...`로 시작하고(위 태스크 표), 읽기·쓰기는 `core/storage.py`만 거칩니다.
-- 실패는 `ErrorCode`의 AI 파이프라인 코드(`SEPARATION_NO_GUITAR`, `TAB_LOW_CONFIDENCE` 등)로 표현합니다.
+- 실패는 `ErrorCode`의 AI 파이프라인 코드(`SEPARATION_NO_GUITAR`, `TAB_NO_NOTES` 등)로 표현합니다. needs_review는 실패가 아니라 `review_reasons`(예: `LOW_CONFIDENCE_NOTES`)로 알립니다.
 - 새 모델·패키지를 추가하면 [`docs/MODELS.md`](docs/MODELS.md)에 라이선스를 적습니다.
 
 ## 공통 응답 형식

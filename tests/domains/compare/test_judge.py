@@ -208,8 +208,19 @@ def test_low_match_rate_is_not_comparable() -> None:
     assert (result.not_comparable_reason, result.regions) == ("LOW_MATCH_RATE", [])
 
 
-def test_tempo_out_of_range_is_not_comparable() -> None:
-    assert run(REF, list(REF), slope=1.6).not_comparable_reason == "TEMPO_OUT_OF_RANGE"
+@pytest.mark.parametrize("slope", [2.1, 0.45])
+def test_tempo_out_of_range_is_not_comparable(slope: float) -> None:
+    assert run(REF, list(REF), slope=slope).not_comparable_reason == "TEMPO_OUT_OF_RANGE"
+
+
+@pytest.mark.parametrize("slope", [1.9, 0.55])
+def test_half_or_double_speed_is_compared(slope: float) -> None:
+    """절반 속도 연습(기울기 2배 이내)도 비교한다 (명세 0.5~2배)."""
+    perf = [note(round(n.start_ms * slope), n.pitch) for n in REF]
+
+    result = run(REF, perf, slope=slope)
+
+    assert (result.not_comparable_reason, result.regions) == (None, [])
 
 
 def test_empty_reference_or_path_is_not_comparable() -> None:

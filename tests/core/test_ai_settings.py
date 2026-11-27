@@ -9,7 +9,7 @@ def test_ai_settings_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
 
     s = Settings(_env_file=None)
 
-    assert s.ai_config_version == "2026-11-19"
+    assert s.ai_config_version == "2026-11-27"
     assert s.ai_separation_model == "BS-Roformer-SW.ckpt"
     assert s.ai_separation_fallback == "htdemucs_6s"
     assert s.ai_transcription_weights == "icassp2022-onnx"
