@@ -316,9 +316,11 @@ def to_tab_response(db: Session, tab: Tab) -> TabResponse:
     return TabResponse(
         tab_id=tab.id,
         segment_id=tab.segment_id,
+        stem_id=tab.stem_id,
         version=tab.version,
         status=tab.status,
         current_stage=tab.current_stage,
+        review_reasons=list(tab.review_reasons),
         stages=stages,
         failure=failure,
         updated_at=tab.updated_at,
@@ -353,6 +355,9 @@ def get_tab_result(db: Session, workspace_id: int, tab_id: int) -> TabResultResp
     """화면에 타브를 그리는 데 필요한 결과. success·needs_review일 때만."""
     tab = _get_done_tab(db, workspace_id, tab_id)
     seg = sources.load_segment(db, workspace_id, tab.segment_id)
+    stem = db.get(Stem, tab.stem_id)
+    # notes[].start는 타브를 만든 기타 음원의 범위 기준이다. 구간을 수정해도 그 범위를 내려준다
+    start_ms, end_ms = (stem.start_ms, stem.end_ms) if stem else (seg.start_ms, seg.end_ms)
     output = TabOutput.model_validate_json(storage.read_bytes(keys.tab_json_key(tab)))
     condition = conditions.playing_condition(tab.tuning_id, tab.capo)
     settings = get_settings()
@@ -363,7 +368,11 @@ def get_tab_result(db: Session, workspace_id: int, tab_id: int) -> TabResultResp
         result_type=tab.result_type,
         status=tab.status,
         segment=SegmentView(
-            segment_id=seg.segment_id, name=seg.name, start_ms=seg.start_ms, end_ms=seg.end_ms
+            segment_id=seg.segment_id,
+            name=seg.name,
+            start_ms=start_ms,
+            end_ms=end_ms,
+            is_outdated=(start_ms, end_ms) != (seg.start_ms, seg.end_ms),
         ),
         condition=ConditionView(
             tuning_id=tab.tuning_id,

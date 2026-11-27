@@ -116,19 +116,24 @@ class TabResponse(BaseModel):
 
     tab_id: int
     segment_id: int
+    stem_id: int
     version: int
     status: str
     current_stage: str | None
+    review_reasons: list[str]  # needs_review 이유. 처리 중에도 미리 알 수 있는 이유가 있다
     stages: list[StageView]
     failure: FailureView | None
     updated_at: datetime
 
 
 class SegmentView(BaseModel):
+    """타브를 만든 당시 구간 범위. notes[].start는 이 start_ms 기준이다."""
+
     segment_id: int
     name: str | None
     start_ms: int
     end_ms: int
+    is_outdated: bool = False  # 만든 뒤 구간 범위가 바뀌었으면 True (이전 구간 기준 결과)
 
 
 class ConditionView(BaseModel):

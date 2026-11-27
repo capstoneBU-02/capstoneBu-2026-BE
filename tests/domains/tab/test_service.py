@@ -8,7 +8,7 @@ from app.core.exceptions import BusinessException, ErrorCode
 from app.domains.processing.models import Stem, StemStatus
 from app.domains.tab import service
 from app.domains.tab.models import Tab, TabStage, TabStatus
-from app.domains.tab.schemas import TabCreateRequest
+from app.domains.tab.schemas import TabCreateRequest, TabOutput
 from tests.domains.conftest import EnqueueSpy, FakeSegments
 
 WS = 10
@@ -189,6 +189,56 @@ def test_response_shows_failure_and_stages(
         3,
     )
     assert res.failure.message == ErrorCode.RHYTHM_FAILED.message
+
+
+def test_response_has_stem_and_review_reasons(
+    db: Session, ready_stem: Callable[..., Stem], enqueue: EnqueueSpy
+) -> None:
+    """B29: 폴링 응답에서도 기타 음원과 확인 필요 이유를 알 수 있다."""
+    stem = ready_stem(status=StemStatus.NEEDS_REVIEW)
+    tab = service.request_tab(db, WS, 1, DEFAULT, enqueue=enqueue).tab
+
+    res = service.to_tab_response(db, tab)
+
+    assert (res.stem_id, res.review_reasons) == (stem.id, ["STEM_NEEDS_REVIEW"])
+
+
+@pytest.fixture
+def done_tab(
+    db: Session,
+    ready_stem: Callable[..., Stem],
+    enqueue: EnqueueSpy,
+    monkeypatch: pytest.MonkeyPatch,
+) -> Tab:
+    """구간 1000~5000ms로 만든 완료 타브. 저장소는 대역으로 바꾼다."""
+    ready_stem()
+    tab = service.request_tab(db, WS, 1, DEFAULT, enqueue=enqueue).tab
+    _set(db, tab, status=TabStatus.SUCCESS)
+    output = TabOutput(notes=[], tempo_bpm=100.0, tempo_uncertain=False)
+    monkeypatch.setattr(
+        service.storage, "read_bytes", lambda key: output.model_dump_json().encode()
+    )
+    monkeypatch.setattr(
+        service.storage, "presigned_download_url", lambda key, download_name=None: "url"
+    )
+    return tab
+
+
+def test_result_segment_is_current_when_unchanged(db: Session, done_tab: Tab) -> None:
+    seg = service.get_tab_result(db, WS, done_tab.id).segment
+
+    assert (seg.start_ms, seg.end_ms, seg.is_outdated) == (1000, 5000, False)
+
+
+def test_result_segment_keeps_range_tab_was_made_from(
+    db: Session, done_tab: Tab, segments: FakeSegments
+) -> None:
+    """B6: 구간을 수정해도 notes 기준인 만들 당시 범위를 내려주고 바뀐 것을 알린다."""
+    segments.add(segment_id=1, start_ms=3000, end_ms=7000)  # 구간 수정
+
+    seg = service.get_tab_result(db, WS, done_tab.id).segment
+
+    assert (seg.start_ms, seg.end_ms, seg.is_outdated) == (1000, 5000, True)
 
 
 def test_result_before_done_is_409(
