@@ -4,6 +4,15 @@
 # - redis     localhost:6379
 # - seaweedfs localhost:8333 (S3 API)
 # - flower    http://localhost:5555  (선택: docker compose --profile monitor up)
+#
+# .env의 DB·Redis·저장소 주소는 로컬에서 uv run으로 실행할 때 쓰는 localhost다.
+# 컨테이너 안의 localhost는 자기 자신이므로 api·worker는 아래 서비스 이름으로 덮어쓴다.
+# 브라우저가 받는 presigned URL 주소(S3_PUBLIC_ENDPOINT_URL)는 localhost 그대로 둔다.
+# DATABASE_URL은 POSTGRES_* 원본 값으로 조립하므로 로컬 비밀번호에 @ : / % 를 쓰지 않는다 (URL 인코딩 안 됨).
+x-container-hosts: &container-hosts
+  DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-capstone}:${POSTGRES_PASSWORD:-capstone}@postgres:5432/${POSTGRES_DB:-capstone}
+  REDIS_URL: redis://redis:6379/0
+  S3_ENDPOINT_URL: http://seaweedfs:8333
 
 services:
   api:
@@ -14,6 +23,7 @@ services:
       sh -c "alembic upgrade head &&
              uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
     env_file: .env
+    environment: *container-hosts
     ports:
       - "8000:8000"
     volumes:
@@ -35,11 +45,14 @@ services:
     # worker 이미지는 CPU 전용이다. 워커 하나가 gpu 큐(기타 분리)까지 CPU로 함께 처리한다
     command: celery -A app.core.celery_app worker -Q cpu,gpu --loglevel=info --concurrency=1
     env_file: .env
+    environment: *container-hosts
     volumes:
       - ./app:/app/app
       - ./scripts:/app/scripts
       - model-cache:/models   # AI 모델 가중치 (scripts/download_models.py)
     depends_on:
+      postgres:
+        condition: service_healthy
       redis:
         condition: service_healthy
       seaweedfs:
