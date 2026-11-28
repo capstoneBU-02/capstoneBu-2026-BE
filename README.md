@@ -53,7 +53,13 @@ docker compose up --build
 
 `.env`의 DB·Redis·저장소 주소는 `localhost`입니다 (로컬에서 `uv run`으로 실행할 때용). `docker compose`로 띄운 api·worker는 `docker-compose.yml`이 이 셋을 컨테이너 주소(`postgres`·`redis`·`seaweedfs`)로 덮어쓰므로 `.env`를 고치지 않아도 됩니다. 브라우저가 받는 파일 주소(`S3_PUBLIC_ENDPOINT_URL`)는 `localhost` 그대로입니다.
 
-배포 서버(`docker-compose.prod.yml`과 서버 `.env`)도 같은 규칙이어야 합니다. worker는 헬스 체크에 포함되지 않으므로 배포 후 `docker compose -f docker-compose.prod.yml logs worker | grep -E "Connected to|ready"`로 연결을 확인합니다.
+배포 서버(`docker-compose.prod.yml`과 서버 `.env`)에서도 api·worker의 DB·Redis·`S3_ENDPOINT_URL`은 컨테이너 주소여야 합니다. 반대로 `S3_PUBLIC_ENDPOINT_URL`은 브라우저가 접근할 수 있는 공개 주소여야 하며 `localhost`를 쓰면 안 됩니다.
+
+worker는 배포 헬스 체크에 포함되지 않으므로 배포 후 직접 확인합니다. 예전 `ready` 로그만 보면 지금 끊긴 상태를 놓칠 수 있으니 현재 상태와 최근 로그를 함께 봅니다.
+```bash
+docker compose -f docker-compose.prod.yml ps worker
+docker compose -f docker-compose.prod.yml logs --since 10m worker | grep -E "Connected to|ready|Cannot connect|Error"
+```
 
 | 주소 | 내용 |
 |---|---|

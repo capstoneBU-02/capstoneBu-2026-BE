@@ -8,6 +8,7 @@
 # .env의 DB·Redis·저장소 주소는 로컬에서 uv run으로 실행할 때 쓰는 localhost다.
 # 컨테이너 안의 localhost는 자기 자신이므로 api·worker는 아래 서비스 이름으로 덮어쓴다.
 # 브라우저가 받는 presigned URL 주소(S3_PUBLIC_ENDPOINT_URL)는 localhost 그대로 둔다.
+# DATABASE_URL은 POSTGRES_* 원본 값으로 조립하므로 로컬 비밀번호에 @ : / % 를 쓰지 않는다 (URL 인코딩 안 됨).
 x-container-hosts: &container-hosts
   DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-capstone}:${POSTGRES_PASSWORD:-capstone}@postgres:5432/${POSTGRES_DB:-capstone}
   REDIS_URL: redis://redis:6379/0
