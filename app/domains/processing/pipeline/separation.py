@@ -33,8 +33,11 @@ BACKING = "backing"  # 기타를 뺀 나머지 악기를 합친 반주
 # (예: input_(bass)_BS-Roformer-SW.wav, input_(Guitar)_htdemucs_6s.wav)
 _PART_RE = re.compile(r"\(([A-Za-z]+)\)")
 
-# 디코딩·리샘플링에서 생기는 끝부분 오차는 허용한다
-TRIM_TOLERANCE_MS = 20
+# 디코딩·리샘플링에서 생기는 끝부분 오차는 허용한다.
+# mp3는 업로드 때 기록한 길이(mutagen)가 실제 디코딩 길이보다 수십 ms 길 수 있어
+# 곡 끝까지 잡은 구간이 모자라 보인다 (예: 259.128초 vs 259.09초). 구간이 음원 길이를
+# 실제로 넘는 경우(수백 ms 이상)만 막는다 (#85)
+TRIM_TOLERANCE_MS = 100
 
 
 class NoGuitarError(Exception):
